@@ -262,3 +262,105 @@ two extension points in the graph allow memory nodes to be registered without mo
 
 - exact prompt engineering for the background ai's selective update logic
 - evaluation page design and metrics
+
+## Developer docs
+
+### 1. Prerequisites
+
+- Python 3.10+
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) (package manager)
+- An OpenRouter API key (free tier works)
+
+### 2. First-time setup
+
+```bash
+git clone <repo-url> && cd homework-helper
+./setup.sh
+```
+
+This creates virtual environments, installs dependencies, and generates `backend/.env`.
+
+Then add your API key:
+
+```bash
+# edit backend/.env
+OPENROUTER_API_KEY=sk-or-v1-...
+```
+
+### 3. Run locally
+
+Two terminals:
+
+```bash
+# terminal 1 — backend (http://127.0.0.1:8000)
+cd backend && uv run python -m app.main
+
+# terminal 2 — frontend (http://localhost:8501)
+cd frontend && uv run streamlit run app.py
+```
+
+Open http://localhost:8501, enter any email, and start chatting.
+
+### 5. Database
+
+SQLite file at `data/homework_helper.db`. Created automatically on first backend start.
+
+Tables: `users`, `subjects`, `chats`, `messages`.
+
+Query it directly:
+
+```bash
+sqlite3 data/homework_helper.db ".tables"
+sqlite3 data/homework_helper.db "SELECT * FROM messages;"
+```
+
+In Docker, the DB is bind-mounted from `data/` so it persists across container restarts.
+
+### 6. Logging
+
+Logs go to stdout with format:
+
+```
+2026-07-18 10:54:01 [INFO] app.routes.chat: Chat request: thread_id=..., message_length=14
+```
+
+Configure level via `LOG_LEVEL` env var (default: `INFO`). Set to `DEBUG` for verbose output.
+
+### 7. Docker
+
+```bash
+docker compose up --build
+```
+
+- Backend: http://localhost:8000
+- Frontend: http://localhost:8501
+
+The SQLite database is stored in `data/` on the host (bind mount), not a Docker volume.
+
+To stop and remove containers:
+
+```bash
+docker compose down
+```
+
+### 8. Type checking
+
+```bash
+cd backend && uv run pyright app/
+cd frontend && uv run pyright app.py auth.py pages/
+```
+
+Zero errors expected. Run this before committing.
+
+### 9. Environment variables
+
+Set in `backend/.env` (copied from `.env.example` by setup.sh):
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `OPENROUTER_API_KEY` | yes | — | Your OpenRouter API key |
+| `OPENROUTER_MODEL` | no | `openrouter/free` | Model to use |
+| `LOG_LEVEL` | no | `INFO` | Logging level |
+| `DATABASE_PATH` | no | `data/homework_helper.db` | SQLite file path |
+| `BACKEND_URL` | no | `http://127.0.0.1:8000` | Frontend→backend URL (set in Docker) |
+
