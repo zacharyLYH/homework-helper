@@ -5,10 +5,10 @@ this project is specifically for helping users with learn subjects with determin
 ## tech stack
 
 - **backend**: python, fastapi, langgraph, langchain, openai-compatible sdk (gemini by default)
-- **frontend**: streamlit, httpx
+- **frontend**: react 19, vite, typescript, tailwind css, shadcn/ui
 - **database**: sqlite
-- **auth**: email based auth and jwt
-- **deployment**: docker, single machine, frontend + backend in same compose file
+- **auth**: email verification code → JWT in httpOnly cookie
+- **deployment**: docker, single machine, nginx frontend + fastapi backend in same compose file
 
 ## core concepts
 
@@ -40,10 +40,14 @@ this project is specifically for helping users with learn subjects with determin
 ### users
 - id
 - email (unique)
-- api_key (encrypted)
-- openrouter_api_key (nullable, encrypted)
 - created_at
-- updated_at
+
+### verification_codes
+- id
+- email
+- code (6-digit)
+- expires_at
+- created_at
 
 ### subjects
 - id
@@ -170,10 +174,22 @@ two extension points in the graph allow memory nodes to be registered without mo
 ## backend api contract
 
 ### auth
-- all endpoints (except health) require `Authorization: Bearer <jwt>` once auth is enabled. jwt is issued by our own email-based sign-in endpoint and validated on every api call.
-- current implementation: no auth, but endpoint structure must not make auth painful to add later. use fastapi dependencies.
+- all endpoints (except health and auth) require a valid JWT cookie (`jwt_token`) or `Authorization: Bearer <jwt>` header.
+- flow: user enters email → backend checks if user exists → sends 6-digit verification code via email → user enters code → backend sets httpOnly cookie with JWT (24h expiry) and returns it in response body.
+- jwt contains: `sub` (user id), `email`, `iat`, `exp`.
+- backend validates JWT on every protected request via FastAPI dependency. cookie is sent automatically by the browser on same-origin requests.
 
 ### endpoints
+
+**auth**
+- `POST /api/auth/request-code` — send verification code to email (requires registered email)
+- `POST /api/auth/verify` — verify code, set httpOnly cookie, return JWT + user info
+- `GET /api/auth/me` — get current user from JWT cookie (returns `{id, email}`)
+
+**debug** (public when `ENVIRONMENT != "prod"`)
+- `GET /api/debug/users` — list all users
+- `GET /api/debug/messages` — list recent messages
+- `GET /api/debug/chats` — list all chats
 
 **subjects**
 - `POST /api/subjects` — create subject
@@ -187,9 +203,15 @@ two extension points in the graph allow memory nodes to be registered without mo
 - `DELETE /api/chats/{chat_id}` — delete chat
 
 **chat execution**
-- `POST /api/chat` — send a message
+- `POST /api/chat` — send a message (non-streaming)
   - request: `{ message, thread_id?, image?, image_media_type?, chat_id? }`
   - response: `{ reply, thread_id, run: { node, token_usage, tool_calls } }`
+- `POST /api/chat/stream` — send a message (SSE streaming)
+  - request: same as above
+  - response: `text/event-stream` with events:
+    - `data: {"type":"token","content":"..."}`
+    - `data: {"type":"done","thread_id":"..."}`
+    - `data: {"type":"error","content":"..."}`
   - note: `thread_id` is the langgraph checkpointer thread id. `chat_id` ties the conversation to a stored chat.
 
 **memory**
@@ -211,42 +233,28 @@ two extension points in the graph allow memory nodes to be registered without mo
 
 ## frontend ui
 
-### api key gate
-- on app load, check sqlite (via backend) for stored api key.
-- if missing, show only the "provide gemini enabled api key" input screen. block all other functionality. 
-- api key is sent to backend once and stored.
-- optionally allow the user to provide an openrouter api key for background tasks (title generation, cheap routing). if not provided, use regular gemini enabled api key.
-- show links to user on how to obtain these keys.
-
-### subject management
-- sidebar or top-level list of subjects.
-- create new subject (name only).
-- click subject to see its chats.
+### login
+- email input → request verification code → code input → verify → redirect to chat.
+- JWT is stored as an httpOnly cookie, persists across browser refreshes automatically.
 
 ### chat interface
-- mode selector (guide / just-solve) at top, fixed for the chat.
-- chat input with optional image upload (base64, max 10mb, jpg/png/gif/webp).
-- message bubbles with avatar, text, image preview, tool call expander, routing node label, token count.
-- ability to start a new chat within the same subject.
+- SSE streaming responses (tokens appear as they are generated).
+- markdown rendering for assistant responses.
+- clean, minimal UI built with tailwind css and shadcn/ui components.
+- logout button in header.
 
-### conversation history
-- sidebar or dedicated page showing past chats per subject.
-- click to resume.
-
-### evaluation / debug page
-- separate tab/page within the same streamlit app.
-- conversation timeline view.
-- memory file version diffs.
-- user strength/weakness heatmaps (to be designed later).
-- raw json inspection.
+### debug page
+- accessible via bug icon in chat header.
+- shows all users, chats, and recent messages from the database.
+- only accessible in non-production environments.
 
 ## docker
 
 - single `docker-compose.yml` with two services: `backend` and `frontend`.
-- backend exposes port 8000.
-- frontend exposes port 8501 (streamlit default).
+- backend exposes port 8000 (internal, not directly accessed).
+- frontend serves via nginx on port 80, proxying `/api/*` requests to the backend.
+- cookies work because both frontend and backend are served from the same origin.
 - sqlite file mounted as a volume so data persists across container restarts.
-- sqlite is regularly backed up to cloudflare r2
 - environment variables for openrouter/gemini base url
 
 ## non-functional requirements
@@ -269,6 +277,7 @@ two extension points in the graph allow memory nodes to be registered without mo
 
 - Python 3.10+
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) (package manager)
+- Node.js 18+ and npm
 - An OpenRouter API key (free tier works)
 
 ### 2. First-time setup
@@ -278,13 +287,16 @@ git clone <repo-url> && cd homework-helper
 ./setup.sh
 ```
 
-This creates virtual environments, installs dependencies, and generates `backend/.env`.
+This creates virtual environments, installs backend + frontend dependencies, and generates `backend/.env`.
 
-Then add your API key:
+Then add your API key and SMTP credentials:
 
 ```bash
 # edit backend/.env
 OPENROUTER_API_KEY=sk-or-v1-...
+SMTP_USER=you@gmail.com
+SMTP_PASSWORD=your-app-password
+SMTP_FROM=you@gmail.com
 ```
 
 ### 3. Run locally
@@ -293,19 +305,19 @@ Two terminals:
 
 ```bash
 # terminal 1 — backend (http://127.0.0.1:8000)
-cd backend && uv run python -m app.main
+cd backend && uv run uvicorn app.main:app --reload
 
-# terminal 2 — frontend (http://localhost:8501)
-cd frontend && uv run streamlit run app.py
+# terminal 2 — frontend (http://localhost:5173)
+cd frontend && npm run dev
 ```
 
-Open http://localhost:8501, enter any email, and start chatting.
+Open http://localhost:5173, enter your email, and start chatting. The Vite dev server proxies `/api` requests to the backend.
 
 ### 5. Database
 
 SQLite file at `data/homework_helper.db`. Created automatically on first backend start.
 
-Tables: `users`, `subjects`, `chats`, `messages`.
+Tables: `users`, `subjects`, `chats`, `messages`, `verification_codes`.
 
 Query it directly:
 
@@ -332,8 +344,8 @@ Configure level via `LOG_LEVEL` env var (default: `INFO`). Set to `DEBUG` for ve
 docker compose up --build
 ```
 
-- Backend: http://localhost:8000
-- Frontend: http://localhost:8501
+- Frontend: http://localhost:80 (nginx, proxies /api to backend)
+- Backend: http://localhost:8000 (internal)
 
 The SQLite database is stored in `data/` on the host (bind mount), not a Docker volume.
 
@@ -347,7 +359,7 @@ docker compose down
 
 ```bash
 cd backend && uv run pyright app/
-cd frontend && uv run pyright app.py auth.py pages/
+cd frontend && npx tsc --noEmit
 ```
 
 Zero errors expected. Run this before committing.
@@ -360,7 +372,29 @@ Set in `backend/.env` (copied from `.env.example` by setup.sh):
 |---|---|---|---|
 | `OPENROUTER_API_KEY` | yes | — | Your OpenRouter API key |
 | `OPENROUTER_MODEL` | no | `openrouter/free` | Model to use |
+| `JWT_SECRET_KEY` | yes | — | Secret key for signing JWT tokens. Generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `SMTP_HOST` | no | `smtp.gmail.com` | SMTP server hostname |
+| `SMTP_PORT` | no | `587` | SMTP server port |
+| `SMTP_USER` | yes | — | SMTP login username (your email address) |
+| `SMTP_PASSWORD` | yes | — | SMTP login password (see below) |
+| `SMTP_FROM` | yes | — | Sender email address (usually same as `SMTP_USER`) |
 | `LOG_LEVEL` | no | `INFO` | Logging level |
+| `ENVIRONMENT` | no | `dev` | Set to `prod` to disable debug endpoints and enable secure cookie |
 | `DATABASE_PATH` | no | `data/homework_helper.db` | SQLite file path |
 | `BACKEND_URL` | no | `http://127.0.0.1:8000` | Frontend→backend URL (set in Docker) |
+
+#### Obtaining SMTP credentials
+
+**Gmail (recommended for dev):**
+1. Enable 2-Step Verification on your Google Account
+2. Go to https://myaccount.google.com/apppasswords
+3. Generate an app password for "Mail"
+4. Use your Gmail address as `SMTP_USER` and `SMTP_FROM`
+5. Use the 16-character app password as `SMTP_PASSWORD`
+
+**Other providers:**
+- Outlook/Hotmail: `SMTP_HOST=smtp-mail.outlook.com`, `SMTP_PORT=587`
+- Yahoo: `SMTP_HOST=smtp.mail.yahoo.com`, `SMTP_PORT=587`
+
+**Note:** `SMTP_USER` and `SMTP_PASSWORD` are the actual login credentials. `SMTP_FROM` is the address recipients see — most providers only allow sending from your own address or verified aliases.
 

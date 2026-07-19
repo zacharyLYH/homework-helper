@@ -1,8 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 import jwt
-from fastapi import Depends, HTTPException
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import Depends, HTTPException, Request
 
 from app.config import settings
 from app.db import get_user_by_email
@@ -11,12 +10,10 @@ from app.schemas import User
 
 log = get_logger(__name__)
 
-security = HTTPBearer()
-
 
 def create_access_token(user: User) -> str:
     payload = {
-        "sub": user.id,
+        "sub": str(user.id),
         "email": user.email,
         "iat": datetime.now(timezone.utc),
         "exp": datetime.now(timezone.utc) + timedelta(hours=24),
@@ -24,9 +21,19 @@ def create_access_token(user: User) -> str:
     return jwt.encode(payload, settings.jwt_secret_key, algorithm="HS256")
 
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> User:
+async def get_current_user(request: Request) -> User:
+    token = request.cookies.get("jwt_token")
+
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
     try:
-        payload = jwt.decode(credentials.credentials, settings.jwt_secret_key, algorithms=["HS256"])
+        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=["HS256"])
         email = payload.get("email")
         if not email:
             raise HTTPException(status_code=401, detail="Invalid token")

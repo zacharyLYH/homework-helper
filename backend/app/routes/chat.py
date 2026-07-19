@@ -3,6 +3,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 
@@ -27,7 +28,6 @@ async def chat(req: ChatRequest, user: User = Depends(get_current_user)):
     thread_id = req.thread_id or str(uuid.uuid4())
     log.info("Chat request: thread_id=%s, message_length=%d", thread_id, len(req.message))
 
-    # Save user message
     save_message(
         chat_id=0,
         role="user",
@@ -98,7 +98,6 @@ async def chat(req: ChatRequest, user: User = Depends(get_current_user)):
 
     final_reply = reply or "No response generated."
 
-    # Save assistant reply
     save_message(
         chat_id=0,
         role="assistant",
@@ -122,3 +121,57 @@ async def chat(req: ChatRequest, user: User = Depends(get_current_user)):
             tool_calls=tool_calls,
         ),
     )
+
+
+@router.post("/api/chat/stream")
+async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
+    thread_id = req.thread_id or str(uuid.uuid4())
+    log.info("Chat stream request: thread_id=%s, message_length=%d", thread_id, len(req.message))
+
+    save_message(
+        chat_id=0,
+        role="user",
+        content=req.message,
+        image_base64=req.image,
+        image_media_type=req.image_media_type,
+    )
+
+    content_parts = []
+    if req.image and req.image_media_type:
+        content_parts.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:{req.image_media_type};base64,{req.image}"},
+        })
+    content_parts.append({"type": "text", "text": req.message})
+
+    if len(content_parts) == 1:
+        user_msg = HumanMessage(content=req.message)
+    else:
+        user_msg = HumanMessage(content=content_parts)
+
+    initial_state = {"messages": [user_msg], "category": ""}
+    config = RunnableConfig(configurable={"thread_id": thread_id})
+
+    async def event_generator():
+        full_reply = ""
+        last_node = "general"
+        try:
+            async for msg, metadata in compiled_graph.astream(
+                initial_state, config=config, stream_mode="messages"
+            ):
+                if isinstance(msg, AIMessage) and msg.content:
+                    content = msg.content if isinstance(msg.content, str) else str(msg.content)
+                    full_reply += content
+                    yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+
+            save_message(
+                chat_id=0,
+                role="assistant",
+                content=full_reply or "No response generated.",
+            )
+            yield f"data: {json.dumps({'type': 'done', 'thread_id': thread_id})}\n\n"
+        except Exception as e:
+            log.error("Stream execution failed: %s", e, exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")

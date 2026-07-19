@@ -3,46 +3,42 @@ set -euo pipefail
 
 echo "=== homework-helper setup ==="
 
-# --- Backend ---
-echo ""
-echo "[1/4] Setting up backend..."
-cd backend
-echo "3.10" > .python-version
-uv sync
-cd ..
+if [ ! -f .env ]; then
+  echo "Creating .env"
+  touch .env
+  echo "
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=openrouter/free
+JWT_SECRET_KEY=
 
-# --- Frontend ---
-echo ""
-echo "[2/4] Setting up frontend..."
-cd frontend
-echo "3.10" > .python-version
-uv sync
-cd ..
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASSWORD=
+SMTP_FROM=
 
-# --- Data directory ---
-echo ""
-echo "[3/4] Creating data directory..."
-mkdir -p data
-touch data/.gitkeep
-
-# --- .env ---
-echo ""
-echo "[4/4] Checking .env..."
-if [ ! -f "backend/.env" ]; then
-  touch backend/.env
-  echo "OPENROUTER_API_KEY=
-  OPENROUTER_MODEL=" > backend/.env
-else
-  echo "  backend/.env already exists"
+ENVIRONMENT=dev
+" >> .env
 fi
 
-# --- Done ---
 echo ""
-echo "Done!"
+echo "--- Backend setup ---"
+cd backend
+uv sync --frozen --no-dev
+uv run python -c "from app.db import init_db; init_db()"
+uv run python -c "from app.db import seed_db; seed_db()" 2>/dev/null || true
+cd ..
+
 echo ""
-echo "To run:"
-echo "  Terminal 1 (backend):  cd backend && uv run python -m app.main"
-echo "  Terminal 2 (frontend): cd frontend && uv run streamlit run app.py"
+echo "--- Frontend setup ---"
+cd frontend
+npm install
+cd ..
+
 echo ""
-echo "Or with Docker:"
-echo "  docker compose up --build"
+echo "=== Done ==="
+echo ""
+echo "Start everything:  docker compose up --build"
+echo "Or dev mode:       Terminal 1: cd backend && uv run uvicorn app.main:app --reload"
+echo "                   Terminal 2: cd frontend && npm run dev"
+echo ""

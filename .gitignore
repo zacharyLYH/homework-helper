@@ -17,6 +17,10 @@ backend/.env*
 *.sqlite
 *.sqlite3
 
+# Node
+node_modules/
+frontend/dist/
+
 # IDE
 .vscode/
 .idea/
@@ -26,9 +30,6 @@ backend/.env*
 # OS
 .DS_Store
 Thumbs.db
-
-# Streamlit
-.streamlit/secrets.toml
 
 # Docker
 docker-compose.override.yml

@@ -1,14 +1,13 @@
-FROM python:3.10-slim
-
-RUN pip install --no-cache-dir uv
+FROM node:20-alpine AS build
 
 WORKDIR /app
-
-COPY pyproject.toml uv.lock .python-version ./
-RUN uv sync --frozen --no-dev
-
+COPY package.json package-lock.json* ./
+RUN npm install
 COPY . .
+RUN npm run build
 
-EXPOSE 8501
-
-CMD ["uv", "run", "streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+FROM nginx:alpine
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
