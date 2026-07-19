@@ -37,25 +37,6 @@ class ChatRequest(BaseModel):
     messages: Optional[list[dict[str, Any]]] = None
 
 
-class ToolCallInfo(BaseModel):
-    name: str
-    args: dict[str, Any]
-    result: str
-
-
-class RunMetadata(BaseModel):
-    node: str
-    thread_id: str
-    token_usage: Optional[dict[str, int]] = None
-    tool_calls: list[ToolCallInfo] = []
-
-
-class ChatResponse(BaseModel):
-    reply: str
-    thread_id: str
-    run: RunMetadata
-
-
 class ToolInfo(BaseModel):
     name: str
     description: str

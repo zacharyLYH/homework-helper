@@ -203,16 +203,14 @@ two extension points in the graph allow memory nodes to be registered without mo
 - `DELETE /api/chats/{chat_id}` — delete chat
 
 **chat execution**
-- `POST /api/chat` — send a message (non-streaming)
-  - request: `{ message, thread_id?, image?, image_media_type?, chat_id? }`
-  - response: `{ reply, thread_id, run: { node, token_usage, tool_calls } }`
 - `POST /api/chat/stream` — send a message (SSE streaming)
-  - request: same as above
+  - request: `{ message, thread_id?, chat_id?, image?, image_media_type?, messages? }`
   - response: `text/event-stream` with events:
     - `data: {"type":"token","content":"..."}`
+    - `data: {"type":"title","content":"..."}`
     - `data: {"type":"done","thread_id":"..."}`
     - `data: {"type":"error","content":"..."}`
-  - note: `thread_id` is the langgraph checkpointer thread id. `chat_id` ties the conversation to a stored chat.
+  - note: `thread_id` is the langgraph checkpointer thread id. `chat_id` ties the conversation to a stored chat. `messages` sends the full conversation history.
 
 **memory**
 - `GET /api/memory/index` — get memory index for current user
