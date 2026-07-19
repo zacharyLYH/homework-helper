@@ -1,6 +1,6 @@
 import json
 import uuid
-from typing import Any
+from typing import Any, AsyncGenerator
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -8,8 +8,8 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 
 from app.auth import get_current_user
-from app.db import save_message
-from app.graph import compiled_graph
+from app.db import get_chat, get_messages, save_message, update_chat_title
+from app.graph import compiled_graph, llm
 from app.logging import get_logger
 from app.schemas import (
     ChatRequest,
@@ -23,13 +23,29 @@ log = get_logger(__name__)
 router = APIRouter()
 
 
+async def generate_title_stream(chat_id: int) -> AsyncGenerator[str, None]:
+    messages = get_messages(chat_id)
+    if not messages:
+        return
+
+    conversation = "\n".join(f"{m.role}: {m.content}" for m in messages[:6])
+    prompt = f"Generate a short title (max 40 chars) for this conversation:\n{conversation}\nTitle:"
+
+    try:
+        async for chunk in llm.astream(prompt):
+            if hasattr(chunk, "content") and chunk.content:
+                yield str(chunk.content)
+    except Exception as e:
+        log.error("Title generation failed: %s", e)
+
+
 @router.post("/api/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest, user: User = Depends(get_current_user)):
-    thread_id = req.thread_id or str(uuid.uuid4())
-    log.info("Chat request: thread_id=%s, message_length=%d", thread_id, len(req.message))
+    thread_id = str(req.chat_id) if req.chat_id else (req.thread_id or str(uuid.uuid4()))
+    log.info("Chat request: thread_id=%s, chat_id=%s, message_length=%d", thread_id, req.chat_id, len(req.message))
 
     save_message(
-        chat_id=0,
+        chat_id=req.chat_id or 0,
         role="user",
         content=req.message,
         image_base64=req.image,
@@ -99,7 +115,7 @@ async def chat(req: ChatRequest, user: User = Depends(get_current_user)):
     final_reply = reply or "No response generated."
 
     save_message(
-        chat_id=0,
+        chat_id=req.chat_id or 0,
         role="assistant",
         content=final_reply,
         metadata_json=json.dumps({
@@ -125,11 +141,11 @@ async def chat(req: ChatRequest, user: User = Depends(get_current_user)):
 
 @router.post("/api/chat/stream")
 async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
-    thread_id = req.thread_id or str(uuid.uuid4())
-    log.info("Chat stream request: thread_id=%s, message_length=%d", thread_id, len(req.message))
+    thread_id = str(req.chat_id) if req.chat_id else (req.thread_id or str(uuid.uuid4()))
+    log.info("Chat stream request: thread_id=%s, chat_id=%s, message_length=%d", thread_id, req.chat_id, len(req.message))
 
     save_message(
-        chat_id=0,
+        chat_id=req.chat_id or 0,
         role="user",
         content=req.message,
         image_base64=req.image,
@@ -168,10 +184,21 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
                     yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
 
             save_message(
-                chat_id=0,
+                chat_id=req.chat_id or 0,
                 role="assistant",
                 content=full_reply or "No response generated.",
             )
+
+            if req.chat_id:
+                existing = get_chat(req.chat_id)
+                if existing and existing.title == "New Chat":
+                    title = ""
+                    async for title_chunk in generate_title_stream(req.chat_id):
+                        title += title_chunk
+                        yield f"data: {json.dumps({'type': 'title', 'content': title_chunk})}\n\n"
+                    if title.strip():
+                        update_chat_title(req.chat_id, title.strip()[:40])
+
             yield f"data: {json.dumps({'type': 'done', 'thread_id': thread_id})}\n\n"
         except Exception as e:
             log.error("Stream execution failed: %s", e, exc_info=True)

@@ -204,3 +204,13 @@ def get_messages(chat_id: int) -> list[Message]:
     with get_conn() as conn:
         rows = conn.execute("SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at ASC", (chat_id,)).fetchall()
         return [Message(id=r["id"], chat_id=r["chat_id"], role=r["role"], content=r["content"], image_base64=r["image_base64"], image_media_type=r["image_media_type"], metadata_json=r["metadata_json"], created_at=_parse_dt(r["created_at"])) for r in rows]
+
+
+def update_chat_title(chat_id: int, title: str) -> Optional[Chat]:
+    with get_conn() as conn:
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute("UPDATE chats SET title = ?, updated_at = ? WHERE id = ?", (title, now, chat_id))
+        row = conn.execute("SELECT * FROM chats WHERE id = ?", (chat_id,)).fetchone()
+        if not row:
+            return None
+        return Chat(id=row["id"], subject_id=row["subject_id"], user_id=row["user_id"], mode=row["mode"], title=row["title"], created_at=_parse_dt(row["created_at"]), updated_at=_parse_dt(row["updated_at"]))

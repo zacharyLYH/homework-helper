@@ -31,6 +31,7 @@ class RouteCategory(str, enum.Enum):
 class ChatRequest(BaseModel):
     message: str
     thread_id: Optional[str] = None
+    chat_id: Optional[int] = None
     image: Optional[str] = None
     image_media_type: Optional[str] = None
 
