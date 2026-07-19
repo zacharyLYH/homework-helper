@@ -328,7 +328,7 @@ sqlite3 data/homework_helper.db "SELECT * FROM messages;"
 
 In Docker, the DB is bind-mounted from `data/` so it persists across container restarts.
 
-Seed the database like this locally: `sqlite3 data/homework_helper.db ".read data/purge-and-seed.sql"`.
+Seed the database like this locally: `sqlite3 data/homework_helper.db ".read data/purge-and-seed.sql";`.
 
 Seed the database like this on mounted Docker volume: `sqlite3 /app/data/homework_helper.db ".read /app/data/purge-and-seed.sql"`
 
