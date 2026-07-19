@@ -4,6 +4,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { sendChatStream, type ChatMessage } from "@/lib/api";
 import { Send, LogOut, Bug, Loader2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ModeToggle } from "@/components/mode-toggle";
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -62,33 +65,36 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-white">
+    <div className="flex flex-col h-screen bg-background">
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
-        <h1 className="text-lg font-semibold text-slate-900">Homework Helper</h1>
+      <header className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <h1 className="text-lg font-semibold text-foreground">Homework Helper</h1>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-slate-500">{user?.email}</span>
-          <button
+          <span className="text-sm text-muted-foreground">{user?.email}</span>
+          <ModeToggle />
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => navigate("/debug")}
-            className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
             title="Debug"
           >
             <Bug className="h-4 w-4" />
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={handleLogout}
-            className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
             title="Logout"
           >
             <LogOut className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
       </header>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && (
-          <div className="flex items-center justify-center h-full text-slate-400 text-sm">
+          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
             Ask me anything about your homework!
           </div>
         )}
@@ -97,8 +103,8 @@ export default function ChatPage() {
             <div
               className={`max-w-[80%] rounded-xl px-4 py-2 text-sm ${
                 msg.role === "user"
-                  ? "bg-slate-900 text-white"
-                  : "bg-slate-100 text-slate-900"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground"
               }`}
             >
               {msg.role === "assistant" && !msg.content && streaming && i === messages.length - 1 ? (
@@ -117,23 +123,21 @@ export default function ChatPage() {
       </div>
 
       {/* Input */}
-      <form onSubmit={handleSubmit} className="border-t border-slate-200 p-4">
+      <form onSubmit={handleSubmit} className="border-t border-border p-4">
         <div className="flex gap-2 max-w-2xl mx-auto">
-          <input
+          <Input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Type your message..."
             disabled={streaming}
-            className="flex-1 px-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent disabled:opacity-50"
           />
-          <button
+          <Button
             type="submit"
             disabled={streaming || !input.trim()}
-            className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2"
           >
             <Send className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
       </form>
     </div>
