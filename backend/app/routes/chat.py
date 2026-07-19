@@ -160,6 +160,9 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
                 initial_state, config=config, stream_mode="messages"
             ):
                 if isinstance(msg, AIMessage) and msg.content:
+                    node = metadata["langgraph_node"] if isinstance(metadata, dict) else ""
+                    if node in ("router", "tool_executor"):
+                        continue
                     content = msg.content if isinstance(msg.content, str) else str(msg.content)
                     full_reply += content
                     yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
