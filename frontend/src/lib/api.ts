@@ -37,20 +37,27 @@ export async function verifyCode(
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  image?: string;
+  imageMediaType?: string;
+  imageName?: string;
 }
 
 export function sendChatStream(
   message: string,
   onToken: (content: string) => void,
   onDone: () => void,
-  onError: (error: string) => void
+  onError: (error: string) => void,
+  chatId?: number,
+  onTitle?: (title: string) => void,
+  image?: string,
+  imageMediaType?: string
 ): AbortController {
   const controller = new AbortController();
 
   fetch(`${API_BASE}/chat/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, chat_id: chatId, image, image_media_type: imageMediaType }),
     credentials: "include",
     signal: controller.signal,
   })
@@ -67,6 +74,7 @@ export function sendChatStream(
       }
       const decoder = new TextDecoder();
       let buffer = "";
+      let accumulatedTitle = "";
 
       while (true) {
         const { done, value } = await reader.read();
@@ -79,6 +87,10 @@ export function sendChatStream(
             try {
               const data = JSON.parse(line.slice(6));
               if (data.type === "token") onToken(data.content);
+              else if (data.type === "title") {
+                accumulatedTitle += data.content;
+                if (onTitle) onTitle(accumulatedTitle);
+              }
               else if (data.type === "done") onDone();
               else if (data.type === "error") onError(data.content);
             } catch {}
@@ -148,6 +160,8 @@ export interface Message {
   chat_id: number;
   role: string;
   content: string;
+  image_base64?: string;
+  image_media_type?: string;
   created_at: string;
 }
 

@@ -2,12 +2,13 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { sendChatStream, getSubjects, getChats, getMessages, type ChatMessage } from "@/lib/api";
-import { Send, LogOut, Bug, Loader2 } from "lucide-react";
+import { Send, LogOut, Bug, Loader2, Paperclip, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ModeToggle } from "@/components/mode-toggle";
 import Sidebar from "@/components/Sidebar";
+import { Attachment, AttachmentMedia, AttachmentContent, AttachmentTitle, AttachmentActions, AttachmentAction } from "@/components/ui/attachment";
 import type { Subject, Chat as ChatType, Message as MessageType } from "@/lib/api";
 
 export default function ChatPage() {
@@ -18,6 +19,10 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [imageData, setImageData] = useState<string | null>(null);
+  const [imageMediaType, setImageMediaType] = useState<string | null>(null);
+  const [imageName, setImageName] = useState<string>("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const { user, logout } = useAuth();
@@ -57,6 +62,8 @@ export default function ChatPage() {
       const formatted: ChatMessage[] = msgs.map((m) => ({
         role: m.role as "user" | "assistant",
         content: m.content,
+        image: m.image_base64 || undefined,
+        imageMediaType: m.image_media_type || undefined,
       }));
       setMessages(formatted);
     } catch (e) {
@@ -87,15 +94,19 @@ export default function ChatPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const msg = input.trim();
-    if (!msg || streaming) return;
+    if ((!msg && !imageData) || streaming || !selectedChatId) return;
 
+    const sentImage = imageData;
+    const sentMediaType = imageMediaType;
+    const sentName = imageName;
     setInput("");
-    setMessages((prev) => [...prev, { role: "user", content: msg }]);
+    clearImage();
+    setMessages((prev) => [...prev, { role: "user", content: msg, image: sentImage || undefined, imageMediaType: sentMediaType || undefined, imageName: sentName || undefined }]);
     setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
     setStreaming(true);
 
     abortRef.current = sendChatStream(
-      msg,
+      msg || "What's in this image?",
       (token) => {
         setMessages((prev) => {
           const updated = [...prev];
@@ -117,7 +128,26 @@ export default function ChatPage() {
           return [...updated];
         });
         setStreaming(false);
-      }
+      },
+      selectedChatId,
+      (title) => {
+        if (selectedChatId) {
+          setChatsBySubject((prev) => {
+            const subjectId = subjects.find((s) => prev[s.id]?.some((c) => c.id === selectedChatId))?.id;
+            if (subjectId && prev[subjectId]) {
+              return {
+                ...prev,
+                [subjectId]: prev[subjectId].map((c) =>
+                  c.id === selectedChatId ? { ...c, title } : c
+                ),
+              };
+            }
+            return prev;
+          });
+        }
+      },
+      sentImage || undefined,
+      sentMediaType || undefined
     );
   };
 
@@ -125,6 +155,27 @@ export default function ChatPage() {
     abortRef.current?.abort();
     await logout();
     navigate("/login");
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const base64 = result.split(",")[1];
+      setImageData(base64);
+      setImageMediaType(file.type);
+      setImageName(file.name);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const clearImage = () => {
+    setImageData(null);
+    setImageMediaType(null);
+    setImageName("");
   };
 
   return (
@@ -192,7 +243,16 @@ export default function ChatPage() {
                       <ReactMarkdown>{msg.content}</ReactMarkdown>
                     </div>
                   ) : (
-                    msg.content
+                    <div>
+                      {msg.image && (
+                        <img
+                          src={`data:${msg.imageMediaType};base64,${msg.image}`}
+                          alt={msg.imageName || "Attached image"}
+                          className="max-w-full max-h-48 rounded-lg mb-2"
+                        />
+                      )}
+                      {msg.content}
+                    </div>
                   )}
                 </div>
               </div>
@@ -204,21 +264,64 @@ export default function ChatPage() {
 
       {/* Input */}
       <form onSubmit={handleSubmit} className="border-t border-border p-4">
-        <div className="flex gap-2 max-w-2xl mx-auto">
-          <Input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Type your message..."
-            disabled={streaming || !selectedChatId}
-          />
-          <Button
-            type="submit"
-            disabled={streaming || !input.trim()}
-            title={streaming ? "Waiting for response..." : !input.trim() ? "Type a message to send" : "Send message"}
-          >
-            <Send className="h-4 w-4" />
-          </Button>
+        <div className="max-w-2xl mx-auto space-y-2">
+          {imageData && (
+            <div className="flex items-center gap-2">
+              <Attachment size="sm">
+                <AttachmentMedia variant="image">
+                  <img
+                    src={`data:${imageMediaType};base64,${imageData}`}
+                    alt={imageName}
+                    className="h-full w-full object-cover"
+                  />
+                </AttachmentMedia>
+                <AttachmentContent>
+                  <AttachmentTitle>{imageName}</AttachmentTitle>
+                </AttachmentContent>
+                <AttachmentActions>
+                  <AttachmentAction
+                    aria-label="Remove attachment"
+                    onClick={clearImage}
+                  >
+                    <X className="h-3 w-3" />
+                  </AttachmentAction>
+                </AttachmentActions>
+              </Attachment>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={streaming || !selectedChatId}
+              title="Attach image"
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
+            <Input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={imageData ? "Add a message (optional)..." : "Type your message..."}
+              disabled={streaming || !selectedChatId}
+            />
+            <Button
+              type="submit"
+              disabled={streaming || (!input.trim() && !imageData)}
+              title={streaming ? "Waiting for response..." : "Send message"}
+            >
+              <Send className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </form>
     </div>
