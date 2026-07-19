@@ -126,6 +126,93 @@ export interface DebugMessage {
   created_at: string;
 }
 
+export interface Subject {
+  id: number;
+  user_id: number;
+  name: string;
+  created_at: string;
+}
+
+export interface Chat {
+  id: number;
+  subject_id: number;
+  user_id: number;
+  mode: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Message {
+  id: number;
+  chat_id: number;
+  role: string;
+  content: string;
+  created_at: string;
+}
+
+export async function getSubjects(): Promise<Subject[]> {
+  const res = await fetch(`${API_BASE}/subjects`, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to fetch subjects");
+  return res.json();
+}
+
+export async function createSubject(name: string): Promise<Subject> {
+  const res = await fetch(`${API_BASE}/subjects?name=${encodeURIComponent(name)}`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("Failed to create subject");
+  return res.json();
+}
+
+export async function deleteSubject(subjectId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/subjects/${subjectId}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("Failed to delete subject");
+}
+
+export async function getChats(subjectId: number): Promise<Chat[]> {
+  const res = await fetch(`${API_BASE}/chats?subject_id=${subjectId}`, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to fetch chats");
+  return res.json();
+}
+
+export async function createChat(subjectId: number, mode: string = "guide", title: string = "New Chat"): Promise<Chat> {
+  const params = new URLSearchParams();
+  params.set("subject_id", String(subjectId));
+  params.set("mode", mode);
+  params.set("title", title);
+  const res = await fetch(`${API_BASE}/chats?${params.toString()}`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("Failed to create chat");
+  return res.json();
+}
+
+export async function getChat(chatId: number): Promise<Chat> {
+  const res = await fetch(`${API_BASE}/chats/${chatId}`, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to fetch chat");
+  return res.json();
+}
+
+export async function deleteChat(chatId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/chats/${chatId}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("Failed to delete chat");
+}
+
+export async function getMessages(chatId: number): Promise<Message[]> {
+  const res = await fetch(`${API_BASE}/chats/${chatId}/messages`, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to fetch messages");
+  return res.json();
+}
+
 export interface SqlResult {
   columns: string[];
   rows: Record<string, unknown>[];

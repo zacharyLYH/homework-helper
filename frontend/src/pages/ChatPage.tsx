@@ -1,14 +1,20 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { sendChatStream, type ChatMessage } from "@/lib/api";
+import { sendChatStream, getSubjects, getChats, getMessages, type ChatMessage } from "@/lib/api";
 import { Send, LogOut, Bug, Loader2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ModeToggle } from "@/components/mode-toggle";
+import Sidebar from "@/components/Sidebar";
+import type { Subject, Chat as ChatType, Message as MessageType } from "@/lib/api";
 
 export default function ChatPage() {
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [chatsBySubject, setChatsBySubject] = useState<Record<number, ChatType[]>>({});
+  const [loading, setLoading] = useState(true);
+  const [selectedChatId, setSelectedChatId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -16,6 +22,63 @@ export default function ChatPage() {
   const abortRef = useRef<AbortController | null>(null);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  const loadSubjects = useCallback(async () => {
+    try {
+      const data = await getSubjects();
+      setSubjects(data);
+      const chatsMap: Record<number, ChatType[]> = {};
+      await Promise.all(
+        data.map(async (s) => {
+          try {
+            const chats = await getChats(s.id);
+            chatsMap[s.id] = chats;
+          } catch {
+            chatsMap[s.id] = [];
+          }
+        })
+      );
+      setChatsBySubject(chatsMap);
+    } catch (e) {
+      console.error("Failed to load subjects", e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSubjects();
+  }, [loadSubjects]);
+
+  const handleSelectChat = async (chatId: number) => {
+    setSelectedChatId(chatId);
+    try {
+      const msgs = await getMessages(chatId);
+      const formatted: ChatMessage[] = msgs.map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      }));
+      setMessages(formatted);
+    } catch (e) {
+      console.error("Failed to load messages", e);
+      setMessages([]);
+    }
+  };
+
+  const handleChatCreated = async (chatId: number, subjectId: number) => {
+    try {
+      const chats = await getChats(subjectId);
+      setChatsBySubject((prev) => ({ ...prev, [subjectId]: chats }));
+      handleSelectChat(chatId);
+    } catch (e) {
+      console.error("Failed to refresh chats", e);
+    }
+  };
+
+  const handleSubjectCreated = async (subject: Subject) => {
+    setSubjects((prev) => [subject, ...prev]);
+    setChatsBySubject((prev) => ({ ...prev, [subject.id]: [] }));
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -91,35 +154,52 @@ export default function ChatPage() {
         </div>
       </header>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.length === 0 && (
-          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-            Ask me anything about your homework!
-          </div>
-        )}
-        {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div
-              className={`max-w-[80%] rounded-xl px-4 py-2 text-sm ${
-                msg.role === "user"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground"
-              }`}
-            >
-              {msg.role === "assistant" && !msg.content && streaming && i === messages.length - 1 ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : msg.role === "assistant" ? (
-                <div className="prose prose-sm max-w-none">
-                  <ReactMarkdown>{msg.content}</ReactMarkdown>
-                </div>
-              ) : (
-                msg.content
-              )}
+      <div className="flex flex-1 overflow-hidden">
+        <Sidebar
+          subjects={subjects}
+          chatsBySubject={chatsBySubject}
+          loading={loading}
+          selectedChatId={selectedChatId}
+          onSelectChat={handleSelectChat}
+          onChatCreated={handleChatCreated}
+          onSubjectCreated={handleSubjectCreated}
+        />
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {!selectedChatId ? (
+            <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+              Select a chat or create a new one to get started.
             </div>
-          </div>
-        ))}
-        <div ref={messagesEndRef} />
+          ) : messages.length === 0 ? (
+            <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+              Ask me anything about your homework!
+            </div>
+          ) : (
+            messages.map((msg, i) => (
+              <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div
+                  className={`max-w-[80%] rounded-xl px-4 py-2 text-sm ${
+                    msg.role === "user"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {msg.role === "assistant" && !msg.content && streaming && i === messages.length - 1 ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : msg.role === "assistant" ? (
+                    <div className="prose prose-sm max-w-none">
+                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    msg.content
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
       {/* Input */}
@@ -130,11 +210,12 @@ export default function ChatPage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Type your message..."
-            disabled={streaming}
+            disabled={streaming || !selectedChatId}
           />
           <Button
             type="submit"
             disabled={streaming || !input.trim()}
+            title={streaming ? "Waiting for response..." : !input.trim() ? "Type a message to send" : "Send message"}
           >
             <Send className="h-4 w-4" />
           </Button>

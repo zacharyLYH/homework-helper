@@ -28,7 +28,7 @@ export default function DebugPage() {
     <div className="flex flex-col h-screen bg-background">
       <header className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/chat")}>
+          <Button variant="ghost" size="icon" onClick={() => navigate("/chat")} title="Back to chat">
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <h1 className="text-lg font-semibold text-foreground">Debug Console</h1>
