@@ -313,7 +313,7 @@ cd frontend && npm run dev
 
 Open http://localhost:5173, enter your email, and start chatting. The Vite dev server proxies `/api` requests to the backend.
 
-### 5. Database
+### 4. Database
 
 SQLite file at `data/homework_helper.db`. Created automatically on first backend start.
 
@@ -328,17 +328,11 @@ sqlite3 data/homework_helper.db "SELECT * FROM messages;"
 
 In Docker, the DB is bind-mounted from `data/` so it persists across container restarts.
 
-### 6. Logging
+Seed the database like this locally: `sqlite3 data/homework_helper.db ".read data/purge-and-seed.sql"`.
 
-Logs go to stdout with format:
+Seed the database like this on mounted Docker volume: `sqlite3 /app/data/homework_helper.db ".read /app/data/purge-and-seed.sql"`
 
-```
-2026-07-18 10:54:01 [INFO] app.routes.chat: Chat request: thread_id=..., message_length=14
-```
-
-Configure level via `LOG_LEVEL` env var (default: `INFO`). Set to `DEBUG` for verbose output.
-
-### 7. Docker
+### 5. Docker
 
 ```bash
 docker compose up --build
@@ -347,15 +341,7 @@ docker compose up --build
 - Frontend: http://localhost:80 (nginx, proxies /api to backend)
 - Backend: http://localhost:8000 (internal)
 
-The SQLite database is stored in `data/` on the host (bind mount), not a Docker volume.
-
-To stop and remove containers:
-
-```bash
-docker compose down
-```
-
-### 8. Type checking
+### 6. Type checking
 
 ```bash
 cd backend && uv run pyright app/
@@ -364,7 +350,7 @@ cd frontend && npx tsc --noEmit
 
 Zero errors expected. Run this before committing.
 
-### 9. Environment variables
+### 7. Environment variables
 
 Set in `backend/.env` (copied from `.env.example` by setup.sh):
 
