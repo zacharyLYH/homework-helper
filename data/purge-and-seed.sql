@@ -6,6 +6,7 @@ DELETE FROM sqlite_sequence;
 
 INSERT INTO users (email) VALUES ('alice@school.edu');
 INSERT INTO users (email) VALUES ('bob@school.edu');
+INSERT INTO users (email) VALUES ('leeyihong03@gmail.com');
 
 INSERT INTO subjects (user_id, name) VALUES (1, 'AP Calculus BC');
 INSERT INTO subjects (user_id, name) VALUES (1, 'Physics C');

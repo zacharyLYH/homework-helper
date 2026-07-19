@@ -108,3 +108,25 @@ class Message(BaseModel):
     image_media_type: Optional[str] = None
     metadata_json: Optional[str] = None
     created_at: datetime
+
+
+# --- Auth Models ---
+
+
+class AuthRequestCodeRequest(BaseModel):
+    email: str
+
+
+class AuthRequestCodeResponse(BaseModel):
+    message: str
+
+
+class AuthVerifyRequest(BaseModel):
+    email: str
+    code: str
+
+
+class AuthVerifyResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: User

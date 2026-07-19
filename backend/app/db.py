@@ -1,6 +1,8 @@
+import random
 import sqlite3
+import string
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -18,10 +20,6 @@ def _resolve_db_path() -> Path:
 
 
 DB_PATH = _resolve_db_path()
-
-
-def get_db_path() -> Path:
-    return DB_PATH
 
 
 def _parse_dt(value: str) -> datetime:
@@ -85,6 +83,14 @@ def init_db():
                 metadata_json TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
+
+            CREATE TABLE IF NOT EXISTS verification_codes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL,
+                code TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
         """)
     log.info("Database initialized")
 
@@ -92,15 +98,34 @@ def init_db():
 # --- User operations ---
 
 
-def get_or_create_user(email: str) -> User:
+def get_user_by_email(email: str) -> Optional[User]:
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
-        if row:
-            return User(id=row["id"], email=row["email"], created_at=_parse_dt(row["created_at"]))
-        now = datetime.now(timezone.utc).isoformat()
-        cur = conn.execute("INSERT INTO users (email, created_at) VALUES (?, ?)", (email, now))
-        assert cur.lastrowid is not None
-        return User(id=cur.lastrowid, email=email, created_at=_parse_dt(now))
+        if not row:
+            return None
+        return User(id=row["id"], email=row["email"], created_at=_parse_dt(row["created_at"]))
+
+
+def create_verification_code(email: str) -> str:
+    code = "".join(random.choices(string.digits, k=6))
+    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+    with get_conn() as conn:
+        conn.execute("DELETE FROM verification_codes WHERE email = ?", (email,))
+        conn.execute("INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)", (email, code, expires_at))
+    return code
+
+
+def verify_code(email: str, code: str) -> bool:
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM verification_codes WHERE email = ? AND code = ?", (email, code)).fetchone()
+        if not row:
+            return False
+        expires_at = datetime.fromisoformat(row["expires_at"])
+        if datetime.now(timezone.utc) > expires_at:
+            conn.execute("DELETE FROM verification_codes WHERE id = ?", (row["id"],))
+            return False
+        conn.execute("DELETE FROM verification_codes WHERE id = ?", (row["id"],))
+        return True
 
 
 # --- Subject operations ---

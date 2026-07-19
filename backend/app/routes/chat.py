@@ -2,11 +2,12 @@ import json
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 
-from app.db import get_or_create_user, save_message
+from app.auth import get_current_user
+from app.db import save_message
 from app.graph import compiled_graph
 from app.logging import get_logger
 from app.schemas import (
@@ -14,21 +15,17 @@ from app.schemas import (
     ChatResponse,
     RunMetadata,
     ToolCallInfo,
+    User,
 )
 
 log = get_logger(__name__)
 router = APIRouter()
 
-MOCK_USER_EMAIL = "user@homework-helper.local"
-
 
 @router.post("/api/chat", response_model=ChatResponse)
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, user: User = Depends(get_current_user)):
     thread_id = req.thread_id or str(uuid.uuid4())
     log.info("Chat request: thread_id=%s, message_length=%d", thread_id, len(req.message))
-
-    # Ensure user exists in DB
-    user = get_or_create_user(MOCK_USER_EMAIL)
 
     # Save user message
     save_message(

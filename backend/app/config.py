@@ -9,6 +9,14 @@ class Settings(BaseSettings):
     port: int = 8000
     database_path: str = ""
     log_level: str = "INFO"
+    environment: str = "dev"
+
+    jwt_secret_key: str = ""
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
