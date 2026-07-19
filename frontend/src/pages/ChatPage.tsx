@@ -23,6 +23,7 @@ export default function ChatPage() {
   const [imageMediaType, setImageMediaType] = useState<string | null>(null);
   const [imageName, setImageName] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const { user, logout } = useAuth();
@@ -99,6 +100,7 @@ export default function ChatPage() {
     const sentImage = imageData;
     const sentMediaType = imageMediaType;
     const sentName = imageName;
+    const historyMessages = [...messages, { role: "user" as const, content: msg, image: sentImage || undefined, imageMediaType: sentMediaType || undefined, imageName: sentName || undefined }];
     setInput("");
     clearImage();
     setMessages((prev) => [...prev, { role: "user", content: msg, image: sentImage || undefined, imageMediaType: sentMediaType || undefined, imageName: sentName || undefined }]);
@@ -147,7 +149,8 @@ export default function ChatPage() {
         }
       },
       sentImage || undefined,
-      sentMediaType || undefined
+      sentMediaType || undefined,
+      historyMessages
     );
   };
 
@@ -159,7 +162,10 @@ export default function ChatPage() {
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !file.type.startsWith("image/")) return;
+    if (!file || !file.type.startsWith("image/")) {
+      e.target.value = "";
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result as string;
@@ -167,6 +173,8 @@ export default function ChatPage() {
       setImageData(base64);
       setImageMediaType(file.type);
       setImageName(file.name);
+      fileInputRef.current?.blur();
+      textInputRef.current?.focus();
     };
     reader.readAsDataURL(file);
     e.target.value = "";
@@ -308,6 +316,7 @@ export default function ChatPage() {
               <Paperclip className="h-4 w-4" />
             </Button>
             <Input
+              ref={textInputRef}
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}

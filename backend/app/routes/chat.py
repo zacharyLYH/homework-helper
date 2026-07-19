@@ -22,6 +22,28 @@ from app.schemas import (
 log = get_logger(__name__)
 router = APIRouter()
 
+def _build_lc_messages(req: ChatRequest) -> list:
+    if req.messages:
+        lc_messages = []
+        for m in req.messages:
+            if m["role"] == "user":
+                lc_messages.append(HumanMessage(content=m["content"]))
+            else:
+                lc_messages.append(AIMessage(content=m["content"]))
+        return lc_messages
+
+    content_parts = []
+    if req.image and req.image_media_type:
+        content_parts.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:{req.image_media_type};base64,{req.image}"},
+        })
+    content_parts.append({"type": "text", "text": req.message})
+
+    if len(content_parts) == 1:
+        return [HumanMessage(content=req.message)]
+    return [HumanMessage(content=content_parts)]
+
 
 async def generate_title_stream(chat_id: int) -> AsyncGenerator[str, None]:
     messages = get_messages(chat_id)
@@ -52,20 +74,8 @@ async def chat(req: ChatRequest, user: User = Depends(get_current_user)):
         image_media_type=req.image_media_type,
     )
 
-    content_parts = []
-    if req.image and req.image_media_type:
-        content_parts.append({
-            "type": "image_url",
-            "image_url": {"url": f"data:{req.image_media_type};base64,{req.image}"},
-        })
-    content_parts.append({"type": "text", "text": req.message})
-
-    if len(content_parts) == 1:
-        user_msg = HumanMessage(content=req.message)
-    else:
-        user_msg = HumanMessage(content=content_parts)
-
-    initial_state = {"messages": [user_msg], "category": ""}
+    lc_messages = _build_lc_messages(req)
+    initial_state = {"messages": lc_messages, "category": ""}
     config = RunnableConfig(configurable={"thread_id": thread_id})
 
     try:
@@ -152,20 +162,8 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
         image_media_type=req.image_media_type,
     )
 
-    content_parts = []
-    if req.image and req.image_media_type:
-        content_parts.append({
-            "type": "image_url",
-            "image_url": {"url": f"data:{req.image_media_type};base64,{req.image}"},
-        })
-    content_parts.append({"type": "text", "text": req.message})
-
-    if len(content_parts) == 1:
-        user_msg = HumanMessage(content=req.message)
-    else:
-        user_msg = HumanMessage(content=content_parts)
-
-    initial_state = {"messages": [user_msg], "category": ""}
+    lc_messages = _build_lc_messages(req)
+    initial_state = {"messages": lc_messages, "category": ""}
     config = RunnableConfig(configurable={"thread_id": thread_id})
 
     async def event_generator():

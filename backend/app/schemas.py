@@ -34,6 +34,7 @@ class ChatRequest(BaseModel):
     chat_id: Optional[int] = None
     image: Optional[str] = None
     image_media_type: Optional[str] = None
+    messages: Optional[list[dict[str, Any]]] = None
 
 
 class ToolCallInfo(BaseModel):

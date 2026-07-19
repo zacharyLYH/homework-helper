@@ -50,14 +50,15 @@ export function sendChatStream(
   chatId?: number,
   onTitle?: (title: string) => void,
   image?: string,
-  imageMediaType?: string
+  imageMediaType?: string,
+  messages?: ChatMessage[]
 ): AbortController {
   const controller = new AbortController();
 
   fetch(`${API_BASE}/chat/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, chat_id: chatId, image, image_media_type: imageMediaType }),
+    body: JSON.stringify({ message, chat_id: chatId, image, image_media_type: imageMediaType, messages: messages?.map(m => ({ role: m.role, content: m.content })) }),
     credentials: "include",
     signal: controller.signal,
   })
