@@ -11,6 +11,12 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     environment: str = "dev"
 
+    #TODO: Replace with actual models to use in production
+    available_models: list[str] = [
+        "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "poolside/laguna-m.1:free",
+    ]
+
     jwt_secret_key: str = ""
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
