@@ -34,6 +34,9 @@ interface Chat {
   user_id: number;
   mode: string;
   title: string;
+  total_tokens: number;
+  input_tokens: number;
+  output_tokens: number;
   created_at: string;
   updated_at: string;
 }
@@ -159,6 +162,13 @@ export default function Sidebar({
                       >
                         <MessageSquare className="h-3 w-3 shrink-0" />
                         <span className="truncate flex-1">{chat.title}</span>
+                        {chat.total_tokens > 0 && (
+                          <span className="text-[10px] text-muted-foreground/60 tabular-nums shrink-0">
+                            {chat.total_tokens >= 1000
+                              ? `${(chat.total_tokens / 1000).toFixed(1)}k`
+                              : chat.total_tokens}
+                          </span>
+                        )}
                       </button>
                     ))}
                     {(!chatsBySubject[subject.id] || chatsBySubject[subject.id].length === 0) && (

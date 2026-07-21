@@ -34,23 +34,29 @@ export async function verifyCode(
   return res.json();
 }
 
+export interface TokenUsage {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   image?: string;
   imageMediaType?: string;
   imageName?: string;
-  model?: string;
+  usage?: TokenUsage;
+  tokenCount?: number;
 }
 
 export function sendChatStream(
   message: string,
   onToken: (content: string) => void,
-  onDone: () => void,
+  onDone: (usage?: TokenUsage) => void,
   onError: (error: string) => void,
   chatId?: number,
   onTitle?: (title: string) => void,
-  onModel?: (model: string) => void,
   image?: string,
   imageMediaType?: string,
   messages?: ChatMessage[]
@@ -95,8 +101,7 @@ export function sendChatStream(
                 if (onTitle) onTitle(accumulatedTitle);
               }
               else if (data.type === "done") {
-                if (data.model && onModel) onModel(data.model);
-                onDone();
+                onDone(data.usage);
               }
               else if (data.type === "error") onError(data.content);
             } catch {}
@@ -157,6 +162,9 @@ export interface Chat {
   user_id: number;
   mode: string;
   title: string;
+  total_tokens: number;
+  input_tokens: number;
+  output_tokens: number;
   created_at: string;
   updated_at: string;
 }
@@ -169,16 +177,17 @@ export interface Message {
   image_base64?: string;
   image_media_type?: string;
   metadata_json?: string;
+  token_count: number;
   created_at: string;
 }
 
-export function getModelFromMetadata(metadata_json?: string): string {
-  if (!metadata_json) return "unknown";
+export function getUsageFromMetadata(metadata_json?: string): TokenUsage | undefined {
+  if (!metadata_json) return undefined;
   try {
     const metadata = JSON.parse(metadata_json);
-    return metadata.model || "unknown";
+    return metadata.usage || metadata.token_usage || undefined;
   } catch {
-    return "unknown";
+    return undefined;
   }
 }
 

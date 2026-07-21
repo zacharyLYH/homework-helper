@@ -51,7 +51,7 @@ def _cycling_invoke(messages: list, bind_tools: list | None = None) -> tuple[Bas
     raise last_err
 
 # Always use the free model for lightweight tasks like title generation
-title_llm = _make_llm("openrouter/free")
+title_llm: ChatOpenAI = _make_llm("openrouter/free")
 
 
 # --- Custom tool executor that updates category in state ---

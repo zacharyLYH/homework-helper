@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { sendChatStream, getSubjects, getChats, getMessages, type ChatMessage, getModelFromMetadata } from "@/lib/api";
+import { sendChatStream, getSubjects, getChats, getMessages, type ChatMessage, type TokenUsage, getUsageFromMetadata } from "@/lib/api";
 import { Send, LogOut, Bug, Loader2, Paperclip, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { ModeToggle } from "@/components/mode-toggle";
 import Sidebar from "@/components/Sidebar";
 import { Attachment, AttachmentMedia, AttachmentContent, AttachmentTitle, AttachmentActions, AttachmentAction } from "@/components/ui/attachment";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Subject, Chat as ChatType, Message as MessageType } from "@/lib/api";
 
 export default function ChatPage() {
@@ -18,7 +19,7 @@ export default function ChatPage() {
   const [selectedChatId, setSelectedChatId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const [currentMessageModel, setCurrentMessageModel] = useState<string | null>(null);
+  const [currentMessageUsage, setCurrentMessageUsage] = useState<TokenUsage | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [imageData, setImageData] = useState<string | null>(null);
   const [imageMediaType, setImageMediaType] = useState<string | null>(null);
@@ -66,7 +67,8 @@ export default function ChatPage() {
         content: m.content,
         image: m.image_base64 || undefined,
         imageMediaType: m.image_media_type || undefined,
-        model: getModelFromMetadata(m.metadata_json),
+        usage: getUsageFromMetadata(m.metadata_json),
+        tokenCount: m.token_count || undefined,
       }));
       setMessages(formatted);
     } catch (e) {
@@ -95,17 +97,18 @@ export default function ChatPage() {
   }, [messages]);
 
   useEffect(() => {
-    if (currentMessageModel && !streaming) {
+    if (currentMessageUsage && !streaming) {
       setMessages((prev) => {
         const updated = [...prev];
         const last = updated[updated.length - 1];
-        if (last && last.role === "assistant" && !last.model) {
-          last.model = currentMessageModel;
+        if (last && last.role === "assistant" && !last.usage) {
+          last.usage = currentMessageUsage;
+          last.tokenCount = currentMessageUsage.total_tokens;
         }
         return updated;
       });
     }
-  }, [currentMessageModel, streaming]);
+  }, [currentMessageUsage, streaming]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,6 +121,7 @@ export default function ChatPage() {
     const historyMessages = [...messages, { role: "user" as const, content: msg, image: sentImage || undefined, imageMediaType: sentMediaType || undefined, imageName: sentName || undefined }];
     setInput("");
     clearImage();
+    setCurrentMessageUsage(null);
     setMessages((prev) => [...prev, { role: "user", content: msg, image: sentImage || undefined, imageMediaType: sentMediaType || undefined, imageName: sentName || undefined }]);
     setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
     setStreaming(true);
@@ -134,7 +138,33 @@ export default function ChatPage() {
           return [...updated];
         });
       },
-      () => setStreaming(false),
+      (usage) => {
+        if (usage) {
+          setCurrentMessageUsage(usage);
+          if (selectedChatId) {
+            setChatsBySubject((prev) => {
+              const subjectId = subjects.find((s) => prev[s.id]?.some((c) => c.id === selectedChatId))?.id;
+              if (subjectId && prev[subjectId]) {
+                return {
+                  ...prev,
+                  [subjectId]: prev[subjectId].map((c) =>
+                    c.id === selectedChatId
+                      ? {
+                          ...c,
+                          input_tokens: c.input_tokens + usage.input_tokens,
+                          output_tokens: c.output_tokens + usage.output_tokens,
+                          total_tokens: c.total_tokens + usage.total_tokens,
+                        }
+                      : c
+                  ),
+                };
+              }
+              return prev;
+            });
+          }
+        }
+        setStreaming(false);
+      },
       (err) => {
         setMessages((prev) => {
           const updated = [...prev];
@@ -163,7 +193,6 @@ export default function ChatPage() {
           });
         }
       },
-      (model) => setCurrentMessageModel(model),
       sentImage || undefined,
       sentMediaType || undefined,
       historyMessages
@@ -201,6 +230,14 @@ export default function ChatPage() {
     setImageMediaType(null);
     setImageName("");
   };
+
+  const selectedChat = selectedChatId
+    ? Object.values(chatsBySubject).flat().find((c) => c.id === selectedChatId)
+    : null;
+  const chatTokenLimit = 128000;
+  const chatTokenPercent = selectedChat
+    ? Math.min((selectedChat.total_tokens / chatTokenLimit) * 100, 100)
+    : 0;
 
   return (
     <div className="flex flex-col h-screen bg-background">
@@ -280,11 +317,6 @@ export default function ChatPage() {
                       </div>
                     )}
                   </div>
-                  {msg.role === "assistant" && msg.model && (
-                    <div className="text-xs text-muted-foreground mt-1 px-2">
-                      {msg.model}
-                    </div>
-                  )}
                 </div>
               </div>
             ))
@@ -353,6 +385,26 @@ export default function ChatPage() {
             >
               <Send className="h-4 w-4" />
             </Button>
+            {selectedChat && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button type="button" className="relative flex items-center justify-center w-9 h-9 shrink-0">
+                    <svg className="w-6 h-6 -rotate-90" viewBox="0 0 36 36">
+                      <circle cx="18" cy="18" r="15" fill="none" stroke="currentColor" strokeWidth="3" className="text-border" />
+                      <circle
+                        cx="18" cy="18" r="15" fill="none" stroke="currentColor" strokeWidth="3"
+                        strokeDasharray={`${chatTokenPercent} 100`}
+                        className="text-muted-foreground/40"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{selectedChat.total_tokens.toLocaleString()} / {chatTokenLimit.toLocaleString()} tokens</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
           </div>
         </div>
       </form>

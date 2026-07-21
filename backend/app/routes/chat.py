@@ -8,7 +8,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 
 from app.auth import get_current_user
-from app.db import get_chat, get_messages, save_message, update_chat_title
+from app.db import get_chat, get_messages, save_message, update_chat_title, update_chat_token_usage
 from app.graph import compiled_graph, title_llm
 from app.logging import get_logger
 from app.schemas import ChatRequest, User
@@ -75,6 +75,7 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
     async def event_generator():
         full_reply = ""
         model_used = "unknown"
+        total_usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
         try:
             async for msg, metadata in compiled_graph.astream(
                 initial_state, config=config, stream_mode="messages"
@@ -87,18 +88,34 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
                     full_reply += content
                     yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
 
-            # Get final state to extract model used
-            final_state = await compiled_graph.ainvoke(initial_state, config=config)
-            model_used = final_state.get("model", "unknown")
-            
-            # Save with model in metadata
-            metadata = {"model": model_used}
+                if isinstance(msg, AIMessage):
+                    resp_meta = getattr(msg, "response_metadata", None) or {}
+                    if resp_meta.get("model_name"):
+                        model_used = resp_meta["model_name"]
+                    usage = getattr(msg, "usage_metadata", None)
+                    if usage:
+                        total_usage["input_tokens"] += usage.get("input_tokens", 0)
+                        total_usage["output_tokens"] += usage.get("output_tokens", 0)
+                        total_usage["total_tokens"] += usage.get("total_tokens", 0)
+
+            # Save with model and usage in metadata
+            metadata = {"model": model_used, "usage": total_usage}
             save_message(
                 chat_id=req.chat_id or 0,
                 role="assistant",
                 content=full_reply or "No response generated.",
                 metadata_json=json.dumps(metadata),
+                token_count=total_usage["total_tokens"],
             )
+
+            # Accumulate token usage on the chat
+            if req.chat_id and total_usage["total_tokens"] > 0:
+                update_chat_token_usage(
+                    req.chat_id,
+                    input_tokens=total_usage["input_tokens"],
+                    output_tokens=total_usage["output_tokens"],
+                    total_tokens=total_usage["total_tokens"],
+                )
 
             if req.chat_id:
                 existing = get_chat(req.chat_id)
@@ -110,7 +127,7 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
                     if title.strip():
                         update_chat_title(req.chat_id, title.strip()[:40])
                         
-            yield f"data: {json.dumps({'type': 'done', 'thread_id': thread_id, 'model': model_used})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'thread_id': thread_id, 'model': model_used, 'usage': total_usage})}\n\n"
         except Exception as e:
             log.error("Stream execution failed: %s", e, exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"

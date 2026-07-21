@@ -77,6 +77,9 @@ class Chat(BaseModel):
     user_id: int
     mode: str
     title: str
+    total_tokens: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -91,6 +94,7 @@ class Message(BaseModel):
     image_base64: Optional[str] = None
     image_media_type: Optional[str] = None
     metadata_json: Optional[str] = None
+    token_count: int = 0
     created_at: datetime
     
     @property
