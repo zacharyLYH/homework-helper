@@ -40,6 +40,7 @@ export interface ChatMessage {
   image?: string;
   imageMediaType?: string;
   imageName?: string;
+  model?: string;
 }
 
 export function sendChatStream(
@@ -49,6 +50,7 @@ export function sendChatStream(
   onError: (error: string) => void,
   chatId?: number,
   onTitle?: (title: string) => void,
+  onModel?: (model: string) => void,
   image?: string,
   imageMediaType?: string,
   messages?: ChatMessage[]
@@ -92,7 +94,10 @@ export function sendChatStream(
                 accumulatedTitle += data.content;
                 if (onTitle) onTitle(accumulatedTitle);
               }
-              else if (data.type === "done") onDone();
+              else if (data.type === "done") {
+                if (data.model && onModel) onModel(data.model);
+                onDone();
+              }
               else if (data.type === "error") onError(data.content);
             } catch {}
           }
@@ -163,7 +168,18 @@ export interface Message {
   content: string;
   image_base64?: string;
   image_media_type?: string;
+  metadata_json?: string;
   created_at: string;
+}
+
+export function getModelFromMetadata(metadata_json?: string): string {
+  if (!metadata_json) return "unknown";
+  try {
+    const metadata = JSON.parse(metadata_json);
+    return metadata.model || "unknown";
+  } catch {
+    return "unknown";
+  }
 }
 
 export async function getSubjects(): Promise<Subject[]> {

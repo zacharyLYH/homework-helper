@@ -9,7 +9,7 @@ from langchain_core.runnables import RunnableConfig
 
 from app.auth import get_current_user
 from app.db import get_chat, get_messages, save_message, update_chat_title
-from app.graph import compiled_graph, llm
+from app.graph import compiled_graph, title_llm
 from app.logging import get_logger
 from app.schemas import ChatRequest, User
 
@@ -48,7 +48,7 @@ async def generate_title_stream(chat_id: int) -> AsyncGenerator[str, None]:
     prompt = f"Generate a short title (max 40 chars) for this conversation:\n{conversation}\nTitle:"
 
     try:
-        async for chunk in llm.astream(prompt):
+        async for chunk in title_llm.astream(prompt):
             if hasattr(chunk, "content") and chunk.content:
                 yield str(chunk.content)
     except Exception as e:
@@ -69,12 +69,12 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
     )
 
     lc_messages = _build_lc_messages(req)
-    initial_state = {"messages": lc_messages, "category": ""}
+    initial_state = {"messages": lc_messages, "category": "", "model": "unknown"}
     config = RunnableConfig(configurable={"thread_id": thread_id})
 
     async def event_generator():
         full_reply = ""
-        last_node = "general"
+        model_used = "unknown"
         try:
             async for msg, metadata in compiled_graph.astream(
                 initial_state, config=config, stream_mode="messages"
@@ -87,10 +87,17 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
                     full_reply += content
                     yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
 
+            # Get final state to extract model used
+            final_state = await compiled_graph.ainvoke(initial_state, config=config)
+            model_used = final_state.get("model", "unknown")
+            
+            # Save with model in metadata
+            metadata = {"model": model_used}
             save_message(
                 chat_id=req.chat_id or 0,
                 role="assistant",
                 content=full_reply or "No response generated.",
+                metadata_json=json.dumps(metadata),
             )
 
             if req.chat_id:
@@ -102,8 +109,8 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
                         yield f"data: {json.dumps({'type': 'title', 'content': title_chunk})}\n\n"
                     if title.strip():
                         update_chat_title(req.chat_id, title.strip()[:40])
-
-            yield f"data: {json.dumps({'type': 'done', 'thread_id': thread_id})}\n\n"
+                        
+            yield f"data: {json.dumps({'type': 'done', 'thread_id': thread_id, 'model': model_used})}\n\n"
         except Exception as e:
             log.error("Stream execution failed: %s", e, exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"

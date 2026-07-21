@@ -5,6 +5,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
+from openai import RateLimitError
 from pydantic import SecretStr
 
 from app.config import settings
@@ -16,16 +17,41 @@ log = get_logger(__name__)
 
 # --- LLM ---
 
-llm = ChatOpenAI(
-    base_url=settings.openrouter_base_url,
-    api_key=SecretStr(settings.openrouter_api_key) if settings.openrouter_api_key else SecretStr(""),
-    model=settings.openrouter_model,
-    temperature=0.7,
-    max_completion_tokens=1024,
-)
+def _make_llm(model: str) -> ChatOpenAI:
+    return ChatOpenAI(
+        base_url=settings.openrouter_base_url,
+        api_key=SecretStr(settings.openrouter_api_key) if settings.openrouter_api_key else SecretStr(""),
+        model=model,
+        temperature=0.7,
+        max_completion_tokens=1024,
+    )
 
-llm_with_tools = llm.bind_tools(ALL_TOOLS)
-math_llm = llm.bind_tools(REAL_TOOLS)
+def _chat_models() -> list[str]:
+    """Returns ordered list of models to try for main chat.
+    Dev uses openrouter/free; prod cycles through Gemini models on quota errors."""
+    if settings.environment == "dev":
+        return ["openrouter/free"]
+    return settings.available_models
+
+def _cycling_invoke(messages: list, bind_tools: list | None = None) -> tuple[BaseMessage, str]:
+    """Invoke LLM, cycling through chat models on quota exhaustion.
+    Returns (response_message, model_used)."""
+    models = _chat_models()
+    last_err: Exception = RuntimeError("No models configured")
+    for model in models:
+        llm = _make_llm(model)
+        bound = llm.bind_tools(bind_tools) if bind_tools else llm
+        try:
+            log.debug(f"Invoking model {model} with messages: {messages}")
+            result = bound.invoke(messages)
+            return result, model  # Return both the message and the model used
+        except RateLimitError as e:
+            log.warning(f"Model {model} quota exceeded, trying next model")
+            last_err = e
+    raise last_err
+
+# Always use the free model for lightweight tasks like title generation
+title_llm = _make_llm("openrouter/free")
 
 
 # --- Custom tool executor that updates category in state ---
@@ -66,8 +92,8 @@ def router(state: GraphState) -> dict:
     """Classify the user message and optionally call tools."""
     messages = state["messages"]
     log.info("Router node invoked")
-    response: BaseMessage = llm_with_tools.invoke(messages)
-    return {"messages": [response]}
+    response, model = _cycling_invoke(messages, bind_tools=ALL_TOOLS)
+    return {"messages": [response], "model": model}
 
 
 def math_solver(state: GraphState) -> dict:
@@ -75,8 +101,8 @@ def math_solver(state: GraphState) -> dict:
     messages = state["messages"]
     log.info("Math solver node invoked")
     system = SystemMessage(content="You are a math tutor. Show step-by-step reasoning. Use the calculator tool when needed.")
-    response: BaseMessage = math_llm.invoke([system] + messages)
-    return {"messages": [response]}
+    response, model = _cycling_invoke([system] + messages, bind_tools=REAL_TOOLS)
+    return {"messages": [response], "model": model}
 
 
 def code_helper(state: GraphState) -> dict:
@@ -84,8 +110,8 @@ def code_helper(state: GraphState) -> dict:
     messages = state["messages"]
     log.info("Code helper node invoked")
     system = SystemMessage(content="You are a senior software engineer. Help with code questions clearly and concisely.")
-    response: BaseMessage = llm.invoke([system] + messages)
-    return {"messages": [response]}
+    response, model = _cycling_invoke([system] + messages)
+    return {"messages": [response], "model": model}
 
 
 def responder(state: GraphState) -> dict:
@@ -93,8 +119,8 @@ def responder(state: GraphState) -> dict:
     messages = state["messages"]
     log.info("Responder node invoked")
     system = SystemMessage(content="You are a helpful assistant. Answer clearly and concisely.")
-    response: BaseMessage = llm.invoke([system] + messages)
-    return {"messages": [response]}
+    response, model = _cycling_invoke([system] + messages)
+    return {"messages": [response], "model": model}
 
 
 # --- Conditional edges ---

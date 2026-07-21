@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { sendChatStream, getSubjects, getChats, getMessages, type ChatMessage } from "@/lib/api";
+import { sendChatStream, getSubjects, getChats, getMessages, type ChatMessage, getModelFromMetadata } from "@/lib/api";
 import { Send, LogOut, Bug, Loader2, Paperclip, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ export default function ChatPage() {
   const [selectedChatId, setSelectedChatId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [currentMessageModel, setCurrentMessageModel] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [imageData, setImageData] = useState<string | null>(null);
   const [imageMediaType, setImageMediaType] = useState<string | null>(null);
@@ -65,6 +66,7 @@ export default function ChatPage() {
         content: m.content,
         image: m.image_base64 || undefined,
         imageMediaType: m.image_media_type || undefined,
+        model: getModelFromMetadata(m.metadata_json),
       }));
       setMessages(formatted);
     } catch (e) {
@@ -91,6 +93,19 @@ export default function ChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    if (currentMessageModel && !streaming) {
+      setMessages((prev) => {
+        const updated = [...prev];
+        const last = updated[updated.length - 1];
+        if (last && last.role === "assistant" && !last.model) {
+          last.model = currentMessageModel;
+        }
+        return updated;
+      });
+    }
+  }, [currentMessageModel, streaming]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,6 +163,7 @@ export default function ChatPage() {
           });
         }
       },
+      (model) => setCurrentMessageModel(model),
       sentImage || undefined,
       sentMediaType || undefined,
       historyMessages
@@ -237,29 +253,36 @@ export default function ChatPage() {
           ) : (
             messages.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div
-                  className={`max-w-[80%] rounded-xl px-4 py-2 text-sm ${
-                    msg.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {msg.role === "assistant" && !msg.content && streaming && i === messages.length - 1 ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : msg.role === "assistant" ? (
-                    <div className="prose prose-sm max-w-none">
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
-                    </div>
-                  ) : (
-                    <div>
-                      {msg.image && (
-                        <img
-                          src={`data:${msg.imageMediaType};base64,${msg.image}`}
-                          alt={msg.imageName || "Attached image"}
-                          className="max-w-full max-h-48 rounded-lg mb-2"
-                        />
-                      )}
-                      {msg.content}
+                <div>
+                  <div
+                    className={`max-w-[80%] rounded-xl px-4 py-2 text-sm ${
+                      msg.role === "user"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {msg.role === "assistant" && !msg.content && streaming && i === messages.length - 1 ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : msg.role === "assistant" ? (
+                      <div className="prose prose-sm max-w-none">
+                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      </div>
+                    ) : (
+                      <div>
+                        {msg.image && (
+                          <img
+                            src={`data:${msg.imageMediaType};base64,${msg.image}`}
+                            alt={msg.imageName || "Attached image"}
+                            className="max-w-full max-h-48 rounded-lg mb-2"
+                          />
+                        )}
+                        {msg.content}
+                      </div>
+                    )}
+                  </div>
+                  {msg.role === "assistant" && msg.model && (
+                    <div className="text-xs text-muted-foreground mt-1 px-2">
+                      {msg.model}
                     </div>
                   )}
                 </div>

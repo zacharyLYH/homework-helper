@@ -14,6 +14,7 @@ from typing_extensions import Annotated, TypedDict
 class GraphState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
     category: str
+    model: str
 
 
 # --- Enums ---
@@ -91,6 +92,18 @@ class Message(BaseModel):
     image_media_type: Optional[str] = None
     metadata_json: Optional[str] = None
     created_at: datetime
+    
+    @property
+    def model(self) -> str:
+        """Extract model from metadata_json, default to 'unknown'."""
+        if self.metadata_json:
+            try:
+                import json
+                metadata = json.loads(self.metadata_json)
+                return metadata.get("model", "unknown")
+            except Exception:
+                pass
+        return "unknown"
 
 
 # --- Auth Models ---
