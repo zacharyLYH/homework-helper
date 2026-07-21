@@ -26,6 +26,36 @@ def _parse_dt(value: str) -> datetime:
     return datetime.fromisoformat(value)
 
 
+# --- Row-to-Model helpers ---
+
+
+def _row_to_user(row) -> User:
+    return User(id=row["id"], email=row["email"], created_at=_parse_dt(row["created_at"]))
+
+
+def _row_to_subject(row) -> Subject:
+    return Subject(id=row["id"], user_id=row["user_id"], name=row["name"], created_at=_parse_dt(row["created_at"]))
+
+
+def _row_to_chat(row) -> Chat:
+    return Chat(
+        id=row["id"], subject_id=row["subject_id"], user_id=row["user_id"],
+        mode=row["mode"], title=row["title"],
+        total_tokens=row["total_tokens"], input_tokens=row["input_tokens"],
+        output_tokens=row["output_tokens"],
+        created_at=_parse_dt(row["created_at"]), updated_at=_parse_dt(row["updated_at"]),
+    )
+
+
+def _row_to_message(row) -> Message:
+    return Message(
+        id=row["id"], chat_id=row["chat_id"], role=row["role"], content=row["content"],
+        image_base64=row["image_base64"], image_media_type=row["image_media_type"],
+        metadata_json=row["metadata_json"], token_count=row["token_count"],
+        created_at=_parse_dt(row["created_at"]),
+    )
+
+
 @contextmanager
 def get_conn():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -116,9 +146,7 @@ def init_db():
 def get_user_by_email(email: str) -> Optional[User]:
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
-        if not row:
-            return None
-        return User(id=row["id"], email=row["email"], created_at=_parse_dt(row["created_at"]))
+        return _row_to_user(row) if row else None
 
 
 def create_verification_code(email: str) -> str:
@@ -135,12 +163,8 @@ def verify_code(email: str, code: str) -> bool:
         row = conn.execute("SELECT * FROM verification_codes WHERE email = ? AND code = ?", (email, code)).fetchone()
         if not row:
             return False
-        expires_at = datetime.fromisoformat(row["expires_at"])
-        if datetime.now(timezone.utc) > expires_at:
-            conn.execute("DELETE FROM verification_codes WHERE id = ?", (row["id"],))
-            return False
         conn.execute("DELETE FROM verification_codes WHERE id = ?", (row["id"],))
-        return True
+        return datetime.now(timezone.utc) <= datetime.fromisoformat(row["expires_at"])
 
 
 # --- Subject operations ---
@@ -157,7 +181,7 @@ def create_subject(user_id: int, name: str) -> Subject:
 def list_subjects(user_id: int) -> list[Subject]:
     with get_conn() as conn:
         rows = conn.execute("SELECT * FROM subjects WHERE user_id = ? ORDER BY created_at DESC", (user_id,)).fetchall()
-        return [Subject(id=r["id"], user_id=r["user_id"], name=r["name"], created_at=_parse_dt(r["created_at"])) for r in rows]
+        return [_row_to_subject(r) for r in rows]
 
 
 def delete_subject(subject_id: int) -> bool:
@@ -177,21 +201,20 @@ def create_chat(subject_id: int, user_id: int, mode: str, title: str = "New Chat
             (subject_id, user_id, mode, title, now, now),
         )
         assert cur.lastrowid is not None
-        return Chat(id=cur.lastrowid, subject_id=subject_id, user_id=user_id, mode=mode, title=title, created_at=_parse_dt(now), updated_at=_parse_dt(now))
+        dt = _parse_dt(now)
+        return Chat(id=cur.lastrowid, subject_id=subject_id, user_id=user_id, mode=mode, title=title, created_at=dt, updated_at=dt)
 
 
 def list_chats(subject_id: int) -> list[Chat]:
     with get_conn() as conn:
         rows = conn.execute("SELECT * FROM chats WHERE subject_id = ? ORDER BY created_at DESC", (subject_id,)).fetchall()
-        return [Chat(id=r["id"], subject_id=r["subject_id"], user_id=r["user_id"], mode=r["mode"], title=r["title"], total_tokens=r["total_tokens"], input_tokens=r["input_tokens"], output_tokens=r["output_tokens"], created_at=_parse_dt(r["created_at"]), updated_at=_parse_dt(r["updated_at"])) for r in rows]
+        return [_row_to_chat(r) for r in rows]
 
 
 def get_chat(chat_id: int) -> Optional[Chat]:
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM chats WHERE id = ?", (chat_id,)).fetchone()
-        if not row:
-            return None
-        return Chat(id=row["id"], subject_id=row["subject_id"], user_id=row["user_id"], mode=row["mode"], title=row["title"], total_tokens=row["total_tokens"], input_tokens=row["input_tokens"], output_tokens=row["output_tokens"], created_at=_parse_dt(row["created_at"]), updated_at=_parse_dt(row["updated_at"]))
+        return _row_to_chat(row) if row else None
 
 
 def delete_chat(chat_id: int) -> bool:
@@ -213,12 +236,11 @@ def save_message(chat_id: int, role: str, content: str, image_base64: Optional[s
         )
         assert cur.lastrowid is not None
         return Message(id=cur.lastrowid, chat_id=chat_id, role=role, content=content, image_base64=image_base64, image_media_type=image_media_type, metadata_json=metadata_json, token_count=token_count, created_at=_parse_dt(now))
-
-
+    
 def get_messages(chat_id: int) -> list[Message]:
     with get_conn() as conn:
         rows = conn.execute("SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at ASC", (chat_id,)).fetchall()
-        return [Message(id=r["id"], chat_id=r["chat_id"], role=r["role"], content=r["content"], image_base64=r["image_base64"], image_media_type=r["image_media_type"], metadata_json=r["metadata_json"], token_count=r["token_count"], created_at=_parse_dt(r["created_at"])) for r in rows]
+        return [_row_to_message(r) for r in rows]
 
 
 def update_chat_title(chat_id: int, title: str) -> Optional[Chat]:
@@ -226,9 +248,7 @@ def update_chat_title(chat_id: int, title: str) -> Optional[Chat]:
         now = datetime.now(timezone.utc).isoformat()
         conn.execute("UPDATE chats SET title = ?, updated_at = ? WHERE id = ?", (title, now, chat_id))
         row = conn.execute("SELECT * FROM chats WHERE id = ?", (chat_id,)).fetchone()
-        if not row:
-            return None
-        return Chat(id=row["id"], subject_id=row["subject_id"], user_id=row["user_id"], mode=row["mode"], title=row["title"], total_tokens=row["total_tokens"], input_tokens=row["input_tokens"], output_tokens=row["output_tokens"], created_at=_parse_dt(row["created_at"]), updated_at=_parse_dt(row["updated_at"]))
+        return _row_to_chat(row) if row else None
 
 
 def update_chat_token_usage(chat_id: int, input_tokens: int, output_tokens: int, total_tokens: int) -> None:
