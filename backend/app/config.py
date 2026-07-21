@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     #TODO: Replace with actual models to use in production
     available_models: list[str] = [
         "nvidia/nemotron-3-ultra-550b-a55b:free",
-        "poolside/laguna-m.1:free",
+        "openrouter/free",
     ]
 
     jwt_secret_key: str = ""
