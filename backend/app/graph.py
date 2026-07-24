@@ -1,4 +1,4 @@
-from typing import Any, Literal
+from typing import Literal
 
 from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
 from langchain_openai import ChatOpenAI
@@ -14,6 +14,14 @@ from app.schemas import GraphState
 from app.tools import ALL_TOOLS, REAL_TOOLS
 
 log = get_logger(__name__)
+
+
+# --- System prompts ---
+
+MATH_SYSTEM_PROMPT = "You are a math tutor. Show step-by-step reasoning. Use the calculator tool when needed."
+CODE_SYSTEM_PROMPT = "You are a senior software engineer. Help with code questions clearly and concisely."
+GENERAL_SYSTEM_PROMPT = "You are a helpful assistant. Answer clearly and concisely."
+
 
 # --- LLM ---
 
@@ -36,15 +44,13 @@ def _chat_models() -> list[str]:
 def _cycling_invoke(messages: list, bind_tools: list | None = None) -> tuple[BaseMessage, str]:
     """Invoke LLM, cycling through chat models on quota exhaustion.
     Returns (response_message, model_used)."""
-    models = _chat_models()
     last_err: Exception = RuntimeError("No models configured")
-    for model in models:
+    for model in _chat_models():
         llm = _make_llm(model)
         bound = llm.bind_tools(bind_tools) if bind_tools else llm
         try:
             log.debug(f"Invoking model {model} with messages: {messages}")
-            result = bound.invoke(messages)
-            return result, model  # Return both the message and the model used
+            return bound.invoke(messages), model
         except RateLimitError as e:
             log.warning(f"Model {model} quota exceeded, trying next model")
             last_err = e
@@ -76,9 +82,7 @@ def tool_executor(state: GraphState) -> dict:
                 tool_call_id=tc["id"],
             ))
         else:
-            from langgraph.prebuilt import ToolNode
-            tool_node = ToolNode(REAL_TOOLS)
-            result = tool_node.invoke({"messages": [last_msg]})
+            result = ToolNode(REAL_TOOLS).invoke({"messages": [last_msg]})
             tool_results.extend(result.get("messages", []))
             break
 
@@ -88,39 +92,37 @@ def tool_executor(state: GraphState) -> dict:
 # --- Nodes ---
 
 
+def _node_with_prompt(state: GraphState, system_prompt: str, bind_tools: list | None = None) -> dict:
+    """Shared node body: optionally prepend a SystemMessage, invoke LLM, return updated state."""
+    messages = state["messages"]
+    if system_prompt:
+        messages = [SystemMessage(content=system_prompt)] + messages
+    response, model = _cycling_invoke(messages, bind_tools=bind_tools)
+    return {"messages": [response], "model": model}
+
+
 def router(state: GraphState) -> dict:
     """Classify the user message and optionally call tools."""
-    messages = state["messages"]
     log.info("Router node invoked")
-    response, model = _cycling_invoke(messages, bind_tools=ALL_TOOLS)
-    return {"messages": [response], "model": model}
+    return _node_with_prompt(state, "", bind_tools=ALL_TOOLS)
 
 
 def math_solver(state: GraphState) -> dict:
     """Specialized math tutor node."""
-    messages = state["messages"]
     log.info("Math solver node invoked")
-    system = SystemMessage(content="You are a math tutor. Show step-by-step reasoning. Use the calculator tool when needed.")
-    response, model = _cycling_invoke([system] + messages, bind_tools=REAL_TOOLS)
-    return {"messages": [response], "model": model}
+    return _node_with_prompt(state, MATH_SYSTEM_PROMPT, bind_tools=REAL_TOOLS)
 
 
 def code_helper(state: GraphState) -> dict:
     """Senior software engineer response."""
-    messages = state["messages"]
     log.info("Code helper node invoked")
-    system = SystemMessage(content="You are a senior software engineer. Help with code questions clearly and concisely.")
-    response, model = _cycling_invoke([system] + messages)
-    return {"messages": [response], "model": model}
+    return _node_with_prompt(state, CODE_SYSTEM_PROMPT)
 
 
 def responder(state: GraphState) -> dict:
     """General-purpose response node."""
-    messages = state["messages"]
     log.info("Responder node invoked")
-    system = SystemMessage(content="You are a helpful assistant. Answer clearly and concisely.")
-    response, model = _cycling_invoke([system] + messages)
-    return {"messages": [response], "model": model}
+    return _node_with_prompt(state, GENERAL_SYSTEM_PROMPT)
 
 
 # --- Conditional edges ---
