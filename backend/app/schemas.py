@@ -1,4 +1,5 @@
 import enum
+import json
 from datetime import datetime
 from typing import Any, Optional
 
@@ -100,14 +101,12 @@ class Message(BaseModel):
     @property
     def model(self) -> str:
         """Extract model from metadata_json, default to 'unknown'."""
-        if self.metadata_json:
-            try:
-                import json
-                metadata = json.loads(self.metadata_json)
-                return metadata.get("model", "unknown")
-            except Exception:
-                pass
-        return "unknown"
+        if not self.metadata_json:
+            return "unknown"
+        try:
+            return json.loads(self.metadata_json).get("model", "unknown")
+        except Exception:
+            return "unknown"
 
 
 # --- Auth Models ---
