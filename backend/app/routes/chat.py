@@ -1,8 +1,8 @@
 import json
 import uuid
-from typing import Any, AsyncGenerator
+from typing import AsyncGenerator
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -16,27 +16,52 @@ from app.schemas import ChatRequest, User
 log = get_logger(__name__)
 router = APIRouter()
 
+
+# --- Helpers ---
+
+
 def _build_lc_messages(req: ChatRequest) -> list:
     if req.messages:
-        lc_messages = []
-        for m in req.messages:
-            if m["role"] == "user":
-                lc_messages.append(HumanMessage(content=m["content"]))
-            else:
-                lc_messages.append(AIMessage(content=m["content"]))
-        return lc_messages
+        return [
+            HumanMessage(content=m["content"]) if m["role"] == "user"
+            else AIMessage(content=m["content"])
+            for m in req.messages
+        ]
 
-    content_parts = []
     if req.image and req.image_media_type:
-        content_parts.append({
-            "type": "image_url",
-            "image_url": {"url": f"data:{req.image_media_type};base64,{req.image}"},
-        })
-    content_parts.append({"type": "text", "text": req.message})
+        return [HumanMessage(content=[
+            {"type": "image_url", "image_url": {"url": f"data:{req.image_media_type};base64,{req.image}"}},
+            {"type": "text", "text": req.message},
+        ])]
+    return [HumanMessage(content=req.message)]
 
-    if len(content_parts) == 1:
-        return [HumanMessage(content=req.message)]
-    return [HumanMessage(content=content_parts)]
+
+def _save_user_message(req: ChatRequest) -> None:
+    save_message(
+        chat_id=req.chat_id or 0,
+        role="user",
+        content=req.message,
+        image_base64=req.image,
+        image_media_type=req.image_media_type,
+    )
+
+
+def _save_assistant_message(chat_id: int | None, full_reply: str, model_used: str, total_usage: dict) -> None:
+    metadata = {"model": model_used, "usage": total_usage}
+    save_message(
+        chat_id=chat_id or 0,
+        role="assistant",
+        content=full_reply or "No response generated.",
+        metadata_json=json.dumps(metadata),
+        token_count=total_usage["total_tokens"],
+    )
+    if chat_id and total_usage["total_tokens"] > 0:
+        update_chat_token_usage(
+            chat_id,
+            input_tokens=total_usage["input_tokens"],
+            output_tokens=total_usage["output_tokens"],
+            total_tokens=total_usage["total_tokens"],
+        )
 
 
 async def generate_title_stream(chat_id: int) -> AsyncGenerator[str, None]:
@@ -55,18 +80,30 @@ async def generate_title_stream(chat_id: int) -> AsyncGenerator[str, None]:
         log.error("Title generation failed: %s", e)
 
 
+async def _maybe_generate_title(chat_id: int | None) -> AsyncGenerator[str, None]:
+    """Yield SSE title events for new chats, then persist the final title."""
+    if not chat_id:
+        return
+    existing = get_chat(chat_id)
+    if not existing or existing.title != "New Chat":
+        return
+    title = ""
+    async for title_chunk in generate_title_stream(chat_id):
+        title += title_chunk
+        yield f"data: {json.dumps({'type': 'title', 'content': title_chunk})}\n\n"
+    if title.strip():
+        update_chat_title(chat_id, title.strip()[:40])
+
+
+# --- Route ---
+
+
 @router.post("/api/chat/stream")
 async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
     thread_id = str(req.chat_id) if req.chat_id else (req.thread_id or str(uuid.uuid4()))
     log.info("Chat stream request: thread_id=%s, chat_id=%s, message_length=%d", thread_id, req.chat_id, len(req.message))
 
-    save_message(
-        chat_id=req.chat_id or 0,
-        role="user",
-        content=req.message,
-        image_base64=req.image,
-        image_media_type=req.image_media_type,
-    )
+    _save_user_message(req)
 
     lc_messages = _build_lc_messages(req)
     initial_state = {"messages": lc_messages, "category": "", "model": "unknown"}
@@ -82,11 +119,10 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
             ):
                 if isinstance(msg, AIMessage) and msg.content:
                     node = metadata["langgraph_node"] if isinstance(metadata, dict) else ""
-                    if node in ("router", "tool_executor"):
-                        continue
-                    content = msg.content if isinstance(msg.content, str) else str(msg.content)
-                    full_reply += content
-                    yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+                    if node not in ("router", "tool_executor"):
+                        content = msg.content if isinstance(msg.content, str) else str(msg.content)
+                        full_reply += content
+                        yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
 
                 if isinstance(msg, AIMessage):
                     resp_meta = getattr(msg, "response_metadata", None) or {}
@@ -98,35 +134,9 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
                         total_usage["output_tokens"] += usage.get("output_tokens", 0)
                         total_usage["total_tokens"] += usage.get("total_tokens", 0)
 
-            # Save with model and usage in metadata
-            metadata = {"model": model_used, "usage": total_usage}
-            save_message(
-                chat_id=req.chat_id or 0,
-                role="assistant",
-                content=full_reply or "No response generated.",
-                metadata_json=json.dumps(metadata),
-                token_count=total_usage["total_tokens"],
-            )
-
-            # Accumulate token usage on the chat
-            if req.chat_id and total_usage["total_tokens"] > 0:
-                update_chat_token_usage(
-                    req.chat_id,
-                    input_tokens=total_usage["input_tokens"],
-                    output_tokens=total_usage["output_tokens"],
-                    total_tokens=total_usage["total_tokens"],
-                )
-
-            if req.chat_id:
-                existing = get_chat(req.chat_id)
-                if existing and existing.title == "New Chat":
-                    title = ""
-                    async for title_chunk in generate_title_stream(req.chat_id):
-                        title += title_chunk
-                        yield f"data: {json.dumps({'type': 'title', 'content': title_chunk})}\n\n"
-                    if title.strip():
-                        update_chat_title(req.chat_id, title.strip()[:40])
-                        
+            _save_assistant_message(req.chat_id, full_reply, model_used, total_usage)
+            async for event in _maybe_generate_title(req.chat_id):
+                yield event
             yield f"data: {json.dumps({'type': 'done', 'thread_id': thread_id, 'model': model_used, 'usage': total_usage})}\n\n"
         except Exception as e:
             log.error("Stream execution failed: %s", e, exc_info=True)
