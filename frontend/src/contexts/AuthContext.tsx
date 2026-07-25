@@ -1,10 +1,5 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
-import { verifyCode, logout as apiLogout } from "@/lib/api";
-
-interface User {
-  id: number;
-  email: string;
-}
+import { verifyCode, logout as apiLogout, type User } from "@/lib/api";
 
 interface AuthContextType {
   user: User | null;

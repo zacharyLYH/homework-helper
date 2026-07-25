@@ -10,7 +10,39 @@ import { ModeToggle } from "@/components/mode-toggle";
 import Sidebar from "@/components/Sidebar";
 import { Attachment, AttachmentMedia, AttachmentContent, AttachmentTitle, AttachmentActions, AttachmentAction } from "@/components/ui/attachment";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { Subject, Chat as ChatType, Message as MessageType } from "@/lib/api";
+import type { Subject, Chat as ChatType } from "@/lib/api";
+
+function MessageBubble({ msg, isStreaming, isLast }: { msg: ChatMessage; isStreaming: boolean; isLast: boolean }) {
+  const isUser = msg.role === "user";
+  return (
+    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+      <div
+        className={`max-w-[80%] rounded-xl px-4 py-2 text-sm ${
+          isUser ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+        }`}
+      >
+        {!isUser && !msg.content && isStreaming && isLast ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : !isUser ? (
+          <div className="prose prose-sm max-w-none">
+            <ReactMarkdown>{msg.content}</ReactMarkdown>
+          </div>
+        ) : (
+          <div>
+            {msg.image && (
+              <img
+                src={`data:${msg.imageMediaType};base64,${msg.image}`}
+                alt={msg.imageName || "Attached image"}
+                className="max-w-full max-h-48 rounded-lg mb-2"
+              />
+            )}
+            {msg.content}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function ChatPage() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -126,9 +158,13 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
     setStreaming(true);
 
-    abortRef.current = sendChatStream(
-      msg || "What's in this image?",
-      (token) => {
+    abortRef.current = sendChatStream({
+      message: msg || "What's in this image?",
+      chatId: selectedChatId,
+      image: sentImage || undefined,
+      imageMediaType: sentMediaType || undefined,
+      messages: historyMessages,
+      onToken: (token) => {
         setMessages((prev) => {
           const updated = [...prev];
           const last = updated[updated.length - 1];
@@ -138,7 +174,7 @@ export default function ChatPage() {
           return [...updated];
         });
       },
-      (usage) => {
+      onDone: (usage) => {
         if (usage) {
           setCurrentMessageUsage(usage);
           if (selectedChatId) {
@@ -165,19 +201,18 @@ export default function ChatPage() {
         }
         setStreaming(false);
       },
-      (err) => {
+      onError: (err) => {
         setMessages((prev) => {
           const updated = [...prev];
           const last = updated[updated.length - 1];
           if (last.role === "assistant") {
             last.content = last.content || `Error: ${err}`;
           }
-          return [...updated];
+          return updated;
         });
         setStreaming(false);
       },
-      selectedChatId,
-      (title) => {
+      onTitle: (title) => {
         if (selectedChatId) {
           setChatsBySubject((prev) => {
             const subjectId = subjects.find((s) => prev[s.id]?.some((c) => c.id === selectedChatId))?.id;
@@ -193,10 +228,7 @@ export default function ChatPage() {
           });
         }
       },
-      sentImage || undefined,
-      sentMediaType || undefined,
-      historyMessages
-    );
+    });
   };
 
   const handleLogout = async () => {
@@ -289,36 +321,7 @@ export default function ChatPage() {
             </div>
           ) : (
             messages.map((msg, i) => (
-              <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div>
-                  <div
-                    className={`max-w-[80%] rounded-xl px-4 py-2 text-sm ${
-                      msg.role === "user"
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {msg.role === "assistant" && !msg.content && streaming && i === messages.length - 1 ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : msg.role === "assistant" ? (
-                      <div className="prose prose-sm max-w-none">
-                        <ReactMarkdown>{msg.content}</ReactMarkdown>
-                      </div>
-                    ) : (
-                      <div>
-                        {msg.image && (
-                          <img
-                            src={`data:${msg.imageMediaType};base64,${msg.image}`}
-                            alt={msg.imageName || "Attached image"}
-                            className="max-w-full max-h-48 rounded-lg mb-2"
-                          />
-                        )}
-                        {msg.content}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+              <MessageBubble key={i} msg={msg} isStreaming={streaming} isLast={i === messages.length - 1} />
             ))
           )}
           <div ref={messagesEndRef} />

@@ -6,10 +6,10 @@ import {
   getDebugChats,
   getDebugMessages,
   executeSql,
-  type DebugUser,
-  type DebugSubject,
-  type DebugChat,
-  type DebugMessage,
+  type User,
+  type Subject,
+  type Chat,
+  type Message,
   type SqlResult,
 } from "@/lib/api";
 import { ArrowLeft, Play, ChevronRight, Database, Users, BookOpen, MessageSquare, RefreshCw } from "lucide-react";
@@ -63,14 +63,104 @@ export default function DebugPage() {
   );
 }
 
+function DebugTreeView({
+  users, selectedUser, selectUser,
+  subjects, selectedSubject, selectSubject,
+  chats, selectedChat, selectChat,
+  loading,
+}: {
+  users: User[];
+  selectedUser: User | null;
+  selectUser: (u: User) => void;
+  subjects: Subject[];
+  selectedSubject: Subject | null;
+  selectSubject: (s: Subject) => void;
+  chats: Chat[];
+  selectedChat: Chat | null;
+  selectChat: (c: Chat) => void;
+  loading: boolean;
+}) {
+  if (users.length === 0) return null;
+  return (
+    <>
+      {users.map((user) => (
+        <div key={user.id}>
+          <Button
+            variant="ghost"
+            className={`w-full justify-start rounded-none px-3 py-2 h-auto ${
+              selectedUser?.id === user.id ? "bg-accent text-accent-foreground" : ""
+            }`}
+            onClick={() => selectUser(user)}
+          >
+            <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0 mr-2" />
+            <span className="truncate font-medium">{user.email}</span>
+            <ChevronRight className="h-3 w-3 text-muted-foreground ml-auto shrink-0" />
+          </Button>
+
+          {selectedUser?.id === user.id && subjects.length > 0 && (
+            <div className="border-l-2 border-border ml-5">
+              {subjects.map((subject) => (
+                <div key={subject.id}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`w-full justify-start rounded-none pl-4 pr-3 py-2 h-auto ${
+                      selectedSubject?.id === subject.id ? "bg-accent text-accent-foreground" : ""
+                    }`}
+                    onClick={() => selectSubject(subject)}
+                  >
+                    <BookOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0 mr-2" />
+                    <span className="truncate">{subject.name}</span>
+                    <ChevronRight className="h-3 w-3 text-muted-foreground ml-auto shrink-0" />
+                  </Button>
+
+                  {selectedSubject?.id === subject.id && chats.length > 0 && (
+                    <div className="border-l-2 border-border ml-5">
+                      {chats.map((chat) => (
+                        <Button
+                          key={chat.id}
+                          variant="ghost"
+                          size="sm"
+                          className={`w-full justify-start rounded-none pl-4 pr-3 py-1.5 h-auto ${
+                            selectedChat?.id === chat.id ? "bg-accent text-accent-foreground" : ""
+                          }`}
+                          onClick={() => selectChat(chat)}
+                        >
+                          <MessageSquare className="h-3 w-3 text-muted-foreground shrink-0 mr-2" />
+                          <span className="truncate">{chat.title}</span>
+                          <span className="ml-auto text-[10px] text-muted-foreground shrink-0">
+                            {chat.mode}
+                          </span>
+                        </Button>
+                      ))}
+                    </div>
+                  )}
+
+                  {selectedSubject?.id === subject.id && chats.length === 0 && !loading && (
+                    <div className="pl-4 py-2 text-xs text-muted-foreground">No chats</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {selectedUser?.id === user.id && subjects.length === 0 && !loading && (
+            <div className="ml-5 pl-4 py-2 text-xs text-muted-foreground">No subjects</div>
+          )}
+        </div>
+      ))}
+    </>
+  );
+}
+
 function BrowserPanel() {
-  const [users, setUsers] = useState<DebugUser[]>([]);
-  const [selectedUser, setSelectedUser] = useState<DebugUser | null>(null);
-  const [subjects, setSubjects] = useState<DebugSubject[]>([]);
-  const [selectedSubject, setSelectedSubject] = useState<DebugSubject | null>(null);
-  const [chats, setChats] = useState<DebugChat[]>([]);
-  const [selectedChat, setSelectedChat] = useState<DebugChat | null>(null);
-  const [messages, setMessages] = useState<DebugMessage[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -93,7 +183,7 @@ function BrowserPanel() {
     }
   }, []);
 
-  const selectUser = useCallback(async (user: DebugUser) => {
+  const selectUser = useCallback(async (user: User) => {
     setSelectedUser(user);
     setSelectedSubject(null);
     setChats([]);
@@ -111,7 +201,7 @@ function BrowserPanel() {
     }
   }, []);
 
-  const selectSubject = useCallback(async (subject: DebugSubject) => {
+  const selectSubject = useCallback(async (subject: Subject) => {
     setSelectedSubject(subject);
     setSelectedChat(null);
     setMessages([]);
@@ -127,7 +217,7 @@ function BrowserPanel() {
     }
   }, []);
 
-  const selectChat = useCallback(async (chat: DebugChat) => {
+  const selectChat = useCallback(async (chat: Chat) => {
     setSelectedChat(chat);
     setLoading(true);
     setError("");
@@ -165,73 +255,18 @@ function BrowserPanel() {
               Click <RefreshCw className="inline h-3 w-3" /> to load users
             </div>
           )}
-
-          {users.map((user) => (
-            <div key={user.id}>
-              <Button
-                variant="ghost"
-                className={`w-full justify-start rounded-none px-3 py-2 h-auto ${
-                  selectedUser?.id === user.id ? "bg-accent text-accent-foreground" : ""
-                }`}
-                onClick={() => selectUser(user)}
-              >
-                <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0 mr-2" />
-                <span className="truncate font-medium">{user.email}</span>
-                <ChevronRight className="h-3 w-3 text-muted-foreground ml-auto shrink-0" />
-              </Button>
-
-              {selectedUser?.id === user.id && subjects.length > 0 && (
-                <div className="border-l-2 border-border ml-5">
-                  {subjects.map((subject) => (
-                    <div key={subject.id}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className={`w-full justify-start rounded-none pl-4 pr-3 py-2 h-auto ${
-                          selectedSubject?.id === subject.id ? "bg-accent text-accent-foreground" : ""
-                        }`}
-                        onClick={() => selectSubject(subject)}
-                      >
-                        <BookOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0 mr-2" />
-                        <span className="truncate">{subject.name}</span>
-                        <ChevronRight className="h-3 w-3 text-muted-foreground ml-auto shrink-0" />
-                      </Button>
-
-                      {selectedSubject?.id === subject.id && chats.length > 0 && (
-                        <div className="border-l-2 border-border ml-5">
-                          {chats.map((chat) => (
-                            <Button
-                              key={chat.id}
-                              variant="ghost"
-                              size="sm"
-                              className={`w-full justify-start rounded-none pl-4 pr-3 py-1.5 h-auto ${
-                                selectedChat?.id === chat.id ? "bg-accent text-accent-foreground" : ""
-                              }`}
-                              onClick={() => selectChat(chat)}
-                            >
-                              <MessageSquare className="h-3 w-3 text-muted-foreground shrink-0 mr-2" />
-                              <span className="truncate">{chat.title}</span>
-                              <span className="ml-auto text-[10px] text-muted-foreground shrink-0">
-                                {chat.mode}
-                              </span>
-                            </Button>
-                          ))}
-                        </div>
-                      )}
-
-                      {selectedSubject?.id === subject.id && chats.length === 0 && !loading && (
-                        <div className="pl-4 py-2 text-xs text-muted-foreground">No chats</div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {selectedUser?.id === user.id && subjects.length === 0 && !loading && (
-                <div className="ml-5 pl-4 py-2 text-xs text-muted-foreground">No subjects</div>
-              )}
-            </div>
-          ))}
+          <DebugTreeView
+            users={users}
+            selectedUser={selectedUser}
+            selectUser={selectUser}
+            subjects={subjects}
+            selectedSubject={selectedSubject}
+            selectSubject={selectSubject}
+            chats={chats}
+            selectedChat={selectedChat}
+            selectChat={selectChat}
+            loading={loading}
+          />
         </div>
       </div>
 

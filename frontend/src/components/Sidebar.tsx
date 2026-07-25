@@ -26,20 +26,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { createSubject, createChat, type Subject } from "@/lib/api";
-
-interface Chat {
-  id: number;
-  subject_id: number;
-  user_id: number;
-  mode: string;
-  title: string;
-  total_tokens: number;
-  input_tokens: number;
-  output_tokens: number;
-  created_at: string;
-  updated_at: string;
-}
+import { createSubject, createChat, type Subject, type Chat } from "@/lib/api";
 
 interface SidebarProps {
   subjects: Subject[];

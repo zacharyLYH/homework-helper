@@ -50,17 +50,20 @@ export interface ChatMessage {
   tokenCount?: number;
 }
 
-export function sendChatStream(
-  message: string,
-  onToken: (content: string) => void,
-  onDone: (usage?: TokenUsage) => void,
-  onError: (error: string) => void,
-  chatId?: number,
-  onTitle?: (title: string) => void,
-  image?: string,
-  imageMediaType?: string,
-  messages?: ChatMessage[]
-): AbortController {
+export interface ChatStreamOptions {
+  message: string;
+  chatId?: number;
+  image?: string;
+  imageMediaType?: string;
+  messages?: ChatMessage[];
+  onToken: (content: string) => void;
+  onDone: (usage?: TokenUsage) => void;
+  onError: (error: string) => void;
+  onTitle?: (title: string) => void;
+}
+
+export function sendChatStream(options: ChatStreamOptions): AbortController {
+  const { message, chatId, image, imageMediaType, messages, onToken, onDone, onError, onTitle } = options;
   const controller = new AbortController();
 
   fetch(`${API_BASE}/chat/stream`, {
@@ -118,35 +121,9 @@ export function sendChatStream(
   return controller;
 }
 
-export interface DebugUser {
+export interface User {
   id: number;
   email: string;
-  created_at: string;
-}
-
-export interface DebugSubject {
-  id: number;
-  user_id: number;
-  name: string;
-  created_at: string;
-}
-
-export interface DebugChat {
-  id: number;
-  subject_id: number;
-  user_id: number;
-  mode: string;
-  title: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface DebugMessage {
-  id: number;
-  chat_id: number;
-  role: string;
-  content: string;
-  created_at: string;
 }
 
 export interface Subject {
@@ -260,25 +237,25 @@ export interface SqlResult {
   error?: string;
 }
 
-export async function getDebugUsers(): Promise<DebugUser[]> {
+export async function getDebugUsers(): Promise<User[]> {
   const res = await fetch(`${API_BASE}/debug/users`, { credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch users");
   return res.json();
 }
 
-export async function getDebugSubjects(userId: number): Promise<DebugSubject[]> {
+export async function getDebugSubjects(userId: number): Promise<Subject[]> {
   const res = await fetch(`${API_BASE}/debug/users/${userId}/subjects`, { credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch subjects");
   return res.json();
 }
 
-export async function getDebugChats(subjectId: number): Promise<DebugChat[]> {
+export async function getDebugChats(subjectId: number): Promise<Chat[]> {
   const res = await fetch(`${API_BASE}/debug/subjects/${subjectId}/chats`, { credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch chats");
   return res.json();
 }
 
-export async function getDebugMessages(chatId: number): Promise<DebugMessage[]> {
+export async function getDebugMessages(chatId: number): Promise<Message[]> {
   const res = await fetch(`${API_BASE}/debug/chats/${chatId}/messages`, { credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch messages");
   return res.json();
