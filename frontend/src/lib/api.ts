@@ -133,6 +133,16 @@ export interface Subject {
   created_at: string;
 }
 
+export interface ChatSummary {
+  id: number;
+  title: string;
+  total_tokens: number;
+}
+
+export interface SubjectWithChats extends Subject {
+  chats: ChatSummary[];
+}
+
 export interface Chat {
   id: number;
   subject_id: number;
@@ -168,7 +178,7 @@ export function getUsageFromMetadata(metadata_json?: string): TokenUsage | undef
   }
 }
 
-export async function getSubjects(): Promise<Subject[]> {
+export async function getSubjects(): Promise<SubjectWithChats[]> {
   const res = await fetch(`${API_BASE}/subjects`, { credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch subjects");
   return res.json();

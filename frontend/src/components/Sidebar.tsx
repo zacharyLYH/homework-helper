@@ -26,16 +26,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { createSubject, createChat, type Subject, type Chat } from "@/lib/api";
+import { createSubject, createChat, type Subject, type ChatSummary } from "@/lib/api";
 
 interface SidebarProps {
   subjects: Subject[];
-  chatsBySubject: Record<number, Chat[]>;
+  chatsBySubject: Record<number, ChatSummary[]>;
   loading: boolean;
   selectedChatId: number | null;
   onSelectChat: (chatId: number) => void;
   onChatCreated: (chatId: number, subjectId: number) => void;
   onSubjectCreated: (subject: Subject) => void;
+  style?: React.CSSProperties;
 }
 
 export default function Sidebar({
@@ -46,6 +47,7 @@ export default function Sidebar({
   onSelectChat,
   onChatCreated,
   onSubjectCreated,
+  style,
 }: SidebarProps) {
   const [createType, setCreateType] = useState<"subject" | "chat">("subject");
   const [subjectName, setSubjectName] = useState("");
@@ -98,7 +100,7 @@ export default function Sidebar({
   };
 
   return (
-    <div className="w-64 border-r border-border flex flex-col bg-muted/30">
+    <div className="border-r border-border flex flex-col bg-muted/30 shrink-0" style={style}>
       <div className="p-3 border-b border-border flex items-center justify-between">
         <h2 className="text-sm font-semibold">Chats</h2>
         <DropdownMenu>

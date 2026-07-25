@@ -1,52 +1,21 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { sendChatStream, getSubjects, getChats, getMessages, type ChatMessage, type TokenUsage, getUsageFromMetadata } from "@/lib/api";
-import { Send, LogOut, Bug, Loader2, Paperclip, X } from "lucide-react";
-import ReactMarkdown from "react-markdown";
+import { sendChatStream, getSubjects, getChats, getMessages, type ChatMessage, type TokenUsage, getUsageFromMetadata, type ChatSummary } from "@/lib/api";
+import { Send, LogOut, Bug, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ModeToggle } from "@/components/mode-toggle";
 import Sidebar from "@/components/Sidebar";
+import MessageBubble from "@/components/MessageBubble";
+import ResizeHandle from "@/components/ResizeHandle";
 import { Attachment, AttachmentMedia, AttachmentContent, AttachmentTitle, AttachmentActions, AttachmentAction } from "@/components/ui/attachment";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { Subject, Chat as ChatType } from "@/lib/api";
-
-function MessageBubble({ msg, isStreaming, isLast }: { msg: ChatMessage; isStreaming: boolean; isLast: boolean }) {
-  const isUser = msg.role === "user";
-  return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`max-w-[80%] rounded-xl px-4 py-2 text-sm ${
-          isUser ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-        }`}
-      >
-        {!isUser && !msg.content && isStreaming && isLast ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : !isUser ? (
-          <div className="prose prose-sm max-w-none">
-            <ReactMarkdown>{msg.content}</ReactMarkdown>
-          </div>
-        ) : (
-          <div>
-            {msg.image && (
-              <img
-                src={`data:${msg.imageMediaType};base64,${msg.image}`}
-                alt={msg.imageName || "Attached image"}
-                className="max-w-full max-h-48 rounded-lg mb-2"
-              />
-            )}
-            {msg.content}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+import type { Subject } from "@/lib/api";
 
 export default function ChatPage() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [chatsBySubject, setChatsBySubject] = useState<Record<number, ChatType[]>>({});
+  const [chatsBySubject, setChatsBySubject] = useState<Record<number, ChatSummary[]>>({});
   const [loading, setLoading] = useState(true);
   const [selectedChatId, setSelectedChatId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -60,6 +29,7 @@ export default function ChatPage() {
   const textInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(256);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -67,17 +37,10 @@ export default function ChatPage() {
     try {
       const data = await getSubjects();
       setSubjects(data);
-      const chatsMap: Record<number, ChatType[]> = {};
-      await Promise.all(
-        data.map(async (s) => {
-          try {
-            const chats = await getChats(s.id);
-            chatsMap[s.id] = chats;
-          } catch {
-            chatsMap[s.id] = [];
-          }
-        })
-      );
+      const chatsMap: Record<number, ChatSummary[]> = {};
+      for (const s of data) {
+        chatsMap[s.id] = s.chats;
+      }
       setChatsBySubject(chatsMap);
     } catch (e) {
       console.error("Failed to load subjects", e);
@@ -142,92 +105,65 @@ export default function ChatPage() {
     }
   }, [currentMessageUsage, streaming]);
 
+  const onToken = useCallback((token: string) => {
+    setMessages((prev) => {
+      const updated = [...prev];
+      const last = updated[updated.length - 1];
+      if (last.role === "assistant") last.content += token;
+      return updated;
+    });
+  }, []);
+
+  const onDone = useCallback((usage: TokenUsage | undefined) => {
+    if (usage) setCurrentMessageUsage(usage);
+    setStreaming(false);
+  }, []);
+
+  const onTitle = useCallback((title: string) => {
+    setChatsBySubject((prev) => {
+      const sid = Object.keys(prev).find((k) => prev[Number(k)]?.some((c) => c.id === selectedChatId));
+      if (!sid) return prev;
+      return { ...prev, [Number(sid)]: prev[Number(sid)].map((c) => (c.id === selectedChatId ? { ...c, title } : c)) };
+    });
+  }, [selectedChatId]);
+
+  const onError = useCallback((err: string) => {
+    setMessages((prev) => {
+      const updated = [...prev];
+      const last = updated[updated.length - 1];
+      if (last.role === "assistant") last.content = last.content || `Error: ${err}`;
+      return updated;
+    });
+    setStreaming(false);
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const msg = input.trim();
-    if ((!msg && !imageData) || streaming || !selectedChatId) return;
+    if (!msg || streaming || !selectedChatId) return;
 
     const sentImage = imageData;
     const sentMediaType = imageMediaType;
     const sentName = imageName;
-    const historyMessages = [...messages, { role: "user" as const, content: msg, image: sentImage || undefined, imageMediaType: sentMediaType || undefined, imageName: sentName || undefined }];
+    const userMessage: ChatMessage = { role: "user", content: msg, image: sentImage || undefined, imageMediaType: sentMediaType || undefined, imageName: sentName || undefined };
+    const historyMessages = [...messages, userMessage];
     setInput("");
     clearImage();
     setCurrentMessageUsage(null);
-    setMessages((prev) => [...prev, { role: "user", content: msg, image: sentImage || undefined, imageMediaType: sentMediaType || undefined, imageName: sentName || undefined }]);
+    setMessages((prev) => [...prev, userMessage]);
     setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
     setStreaming(true);
 
     abortRef.current = sendChatStream({
-      message: msg || "What's in this image?",
+      message: msg,
       chatId: selectedChatId,
       image: sentImage || undefined,
       imageMediaType: sentMediaType || undefined,
       messages: historyMessages,
-      onToken: (token) => {
-        setMessages((prev) => {
-          const updated = [...prev];
-          const last = updated[updated.length - 1];
-          if (last.role === "assistant") {
-            last.content += token;
-          }
-          return [...updated];
-        });
-      },
-      onDone: (usage) => {
-        if (usage) {
-          setCurrentMessageUsage(usage);
-          if (selectedChatId) {
-            setChatsBySubject((prev) => {
-              const subjectId = subjects.find((s) => prev[s.id]?.some((c) => c.id === selectedChatId))?.id;
-              if (subjectId && prev[subjectId]) {
-                return {
-                  ...prev,
-                  [subjectId]: prev[subjectId].map((c) =>
-                    c.id === selectedChatId
-                      ? {
-                          ...c,
-                          input_tokens: c.input_tokens + usage.input_tokens,
-                          output_tokens: c.output_tokens + usage.output_tokens,
-                          total_tokens: c.total_tokens + usage.total_tokens,
-                        }
-                      : c
-                  ),
-                };
-              }
-              return prev;
-            });
-          }
-        }
-        setStreaming(false);
-      },
-      onError: (err) => {
-        setMessages((prev) => {
-          const updated = [...prev];
-          const last = updated[updated.length - 1];
-          if (last.role === "assistant") {
-            last.content = last.content || `Error: ${err}`;
-          }
-          return updated;
-        });
-        setStreaming(false);
-      },
-      onTitle: (title) => {
-        if (selectedChatId) {
-          setChatsBySubject((prev) => {
-            const subjectId = subjects.find((s) => prev[s.id]?.some((c) => c.id === selectedChatId))?.id;
-            if (subjectId && prev[subjectId]) {
-              return {
-                ...prev,
-                [subjectId]: prev[subjectId].map((c) =>
-                  c.id === selectedChatId ? { ...c, title } : c
-                ),
-              };
-            }
-            return prev;
-          });
-        }
-      },
+      onToken,
+      onDone,
+      onError,
+      onTitle,
     });
   };
 
@@ -307,7 +243,9 @@ export default function ChatPage() {
           onSelectChat={handleSelectChat}
           onChatCreated={handleChatCreated}
           onSubjectCreated={handleSubjectCreated}
+          style={{ width: sidebarWidth }}
         />
+        <ResizeHandle startWidth={sidebarWidth} onResize={setSidebarWidth} />
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -346,6 +284,7 @@ export default function ChatPage() {
                 </AttachmentContent>
                 <AttachmentActions>
                   <AttachmentAction
+                    type="button"
                     aria-label="Remove attachment"
                     onClick={clearImage}
                   >
@@ -370,6 +309,7 @@ export default function ChatPage() {
               onClick={() => fileInputRef.current?.click()}
               disabled={streaming || !selectedChatId}
               title="Attach image"
+              className="cursor-pointer"
             >
               <Paperclip className="h-4 w-4" />
             </Button>
@@ -383,8 +323,9 @@ export default function ChatPage() {
             />
             <Button
               type="submit"
-              disabled={streaming || (!input.trim() && !imageData)}
+              disabled={streaming || !selectedChatId || !input.trim()}
               title={streaming ? "Waiting for response..." : "Send message"}
+              className="cursor-pointer"
             >
               <Send className="h-4 w-4" />
             </Button>

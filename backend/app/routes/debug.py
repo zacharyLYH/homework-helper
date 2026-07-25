@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.config import settings
-from app.db import get_conn
+from app.db import get_conn, list_all_users, list_chats, list_subjects, get_messages
 from app.logging import get_logger
 
 log = get_logger(__name__)
@@ -17,39 +17,25 @@ def _check_prod():
 @router.get("/api/debug/users")
 async def get_users():
     _check_prod()
-    with get_conn() as conn:
-        users = conn.execute("SELECT * FROM users ORDER BY created_at").fetchall()
-        return [dict(u) for u in users]
+    return [u.model_dump() for u in list_all_users()]
 
 
 @router.get("/api/debug/users/{user_id}/subjects")
 async def get_subjects(user_id: int):
     _check_prod()
-    with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT * FROM subjects WHERE user_id = ? ORDER BY created_at DESC", (user_id,)
-        ).fetchall()
-        return [dict(r) for r in rows]
+    return [s.model_dump() for s in list_subjects(user_id)]
 
 
 @router.get("/api/debug/subjects/{subject_id}/chats")
 async def get_chats(subject_id: int):
     _check_prod()
-    with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT * FROM chats WHERE subject_id = ? ORDER BY created_at DESC", (subject_id,)
-        ).fetchall()
-        return [dict(r) for r in rows]
+    return [c.model_dump() for c in list_chats(subject_id)]
 
 
 @router.get("/api/debug/chats/{chat_id}/messages")
-async def get_messages(chat_id: int):
+async def get_messages_endpoint(chat_id: int):
     _check_prod()
-    with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at ASC", (chat_id,)
-        ).fetchall()
-        return [dict(r) for r in rows]
+    return [m.model_dump() for m in get_messages(chat_id)]
 
 
 class SqlRequest(BaseModel):

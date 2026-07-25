@@ -8,8 +8,9 @@ from app.db import (
     delete_subject,
     get_chat,
     get_messages,
+    get_subject,
     list_chats,
-    list_subjects,
+    list_subjects_with_chat_metadata,
 )
 from app.logging import get_logger
 from app.schemas import Chat, Subject, User
@@ -23,7 +24,7 @@ router = APIRouter()
 
 def _get_owned_subject(subject_id: int, user_id: int) -> Subject:
     """Get a subject and verify it belongs to the user. Raises 404 if not found."""
-    subject = next((s for s in list_subjects(user_id) if s.id == subject_id), None)
+    subject = get_subject(subject_id, user_id)
     if not subject:
         raise HTTPException(status_code=404, detail="Subject not found")
     return subject
@@ -43,7 +44,7 @@ def _get_owned_chat(chat_id: int, user_id: int) -> Chat:
 
 @router.get("/api/subjects")
 async def get_subjects(user: User = Depends(get_current_user)):
-    return list_subjects(user.id)
+    return list_subjects_with_chat_metadata(user.id)
 
 
 @router.post("/api/subjects", response_model=Subject)

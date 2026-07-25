@@ -8,7 +8,7 @@ from typing import Optional
 
 from app.config import settings
 from app.logging import get_logger
-from app.schemas import Chat, Message, Subject, User
+from app.schemas import Chat, ChatSummary, Message, Subject, SubjectWithChats, User
 
 log = get_logger(__name__)
 
@@ -167,6 +167,12 @@ def verify_code(email: str, code: str) -> bool:
         return datetime.now(timezone.utc) <= datetime.fromisoformat(row["expires_at"])
 
 
+def list_all_users() -> list[User]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM users ORDER BY created_at").fetchall()
+        return [_row_to_user(r) for r in rows]
+
+
 # --- Subject operations ---
 
 
@@ -182,6 +188,12 @@ def list_subjects(user_id: int) -> list[Subject]:
     with get_conn() as conn:
         rows = conn.execute("SELECT * FROM subjects WHERE user_id = ? ORDER BY created_at DESC", (user_id,)).fetchall()
         return [_row_to_subject(r) for r in rows]
+
+
+def get_subject(subject_id: int, user_id: int) -> Optional[Subject]:
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM subjects WHERE id = ? AND user_id = ?", (subject_id, user_id)).fetchone()
+        return _row_to_subject(row) if row else None
 
 
 def delete_subject(subject_id: int) -> bool:
@@ -258,3 +270,31 @@ def update_chat_token_usage(chat_id: int, input_tokens: int, output_tokens: int,
             "UPDATE chats SET input_tokens = input_tokens + ?, output_tokens = output_tokens + ?, total_tokens = total_tokens + ?, updated_at = ? WHERE id = ?",
             (input_tokens, output_tokens, total_tokens, now, chat_id),
         )
+
+
+def list_subjects_with_chat_metadata(user_id: int) -> list[SubjectWithChats]:
+    with get_conn() as conn:
+        subjects = conn.execute(
+            "SELECT * FROM subjects WHERE user_id = ? ORDER BY created_at DESC", (user_id,)
+        ).fetchall()
+        if not subjects:
+            return []
+        subject_ids = [s["id"] for s in subjects]
+        placeholders = ",".join("?" for _ in subject_ids)
+        chats = conn.execute(
+            f"SELECT subject_id, id, title, total_tokens FROM chats WHERE subject_id IN ({placeholders}) ORDER BY created_at DESC",
+            subject_ids,
+        ).fetchall()
+        chats_by_subject: dict[int, list[ChatSummary]] = {}
+        for c in chats:
+            chats_by_subject.setdefault(c["subject_id"], []).append(
+                ChatSummary(id=c["id"], title=c["title"], total_tokens=c["total_tokens"])
+            )
+        return [
+            SubjectWithChats(
+                id=s["id"], user_id=s["user_id"], name=s["name"],
+                created_at=_parse_dt(s["created_at"]),
+                chats=chats_by_subject.get(s["id"], []),
+            )
+            for s in subjects
+        ]

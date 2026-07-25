@@ -112,6 +112,24 @@ class Message(BaseModel):
 # --- Auth Models ---
 
 
+class ChatSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    total_tokens: int
+
+
+class SubjectWithChats(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int
+    name: str
+    created_at: datetime
+    chats: list[ChatSummary]
+
+
 class AuthRequestCodeRequest(BaseModel):
     email: str
 
