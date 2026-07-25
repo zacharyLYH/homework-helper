@@ -1,5 +1,7 @@
 import { Loader2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import rehypeRaw from "rehype-raw";
+import remarkGfm from "remark-gfm";
 import { Message, MessageContent } from "@/components/ui/message";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import type { ChatMessage } from "@/lib/api";
@@ -39,7 +41,7 @@ export default function MessageBubble({ msg, isStreaming, isLast }: { msg: ChatM
               </>
             ) : (
               <div className="prose prose-sm max-w-none">
-                <ReactMarkdown>{msg.content}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>{msg.content}</ReactMarkdown>
               </div>
             )}
           </BubbleContent>
