@@ -2,15 +2,11 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { sendChatStream, getSubjects, getChats, getMessages, type ChatMessage, type TokenUsage, getUsageFromMetadata, type ChatSummary } from "@/lib/api";
-import { Send, LogOut, Bug, Paperclip, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ModeToggle } from "@/components/mode-toggle";
 import Sidebar from "@/components/Sidebar";
-import MessageBubble from "@/components/MessageBubble";
 import ResizeHandle from "@/components/ResizeHandle";
-import { Attachment, AttachmentMedia, AttachmentContent, AttachmentTitle, AttachmentActions, AttachmentAction } from "@/components/ui/attachment";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import ChatHeader from "@/components/ChatHeader";
+import ChatMessages from "@/components/ChatMessages";
+import ChatInput from "@/components/ChatInput";
 import type { Subject } from "@/lib/api";
 
 export default function ChatPage() {
@@ -19,15 +15,8 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(true);
   const [selectedChatId, setSelectedChatId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState("");
   const [currentMessageUsage, setCurrentMessageUsage] = useState<TokenUsage | null>(null);
   const [streaming, setStreaming] = useState(false);
-  const [imageData, setImageData] = useState<string | null>(null);
-  const [imageMediaType, setImageMediaType] = useState<string | null>(null);
-  const [imageName, setImageName] = useState<string>("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const textInputRef = useRef<HTMLInputElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(256);
   const { user, logout } = useAuth();
@@ -88,10 +77,6 @@ export default function ChatPage() {
   };
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  useEffect(() => {
     if (currentMessageUsage && !streaming) {
       setMessages((prev) => {
         const updated = [...prev];
@@ -137,66 +122,39 @@ export default function ChatPage() {
     setStreaming(false);
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const msg = input.trim();
-    if (!msg || streaming || !selectedChatId) return;
+  const handleSubmitMessage = useCallback(async (text: string, image?: { data: string; mediaType: string; name: string }) => {
+    if (!text || streaming || !selectedChatId) return;
 
-    const sentImage = imageData;
-    const sentMediaType = imageMediaType;
-    const sentName = imageName;
-    const userMessage: ChatMessage = { role: "user", content: msg, image: sentImage || undefined, imageMediaType: sentMediaType || undefined, imageName: sentName || undefined };
+    const userMessage: ChatMessage = {
+      role: "user",
+      content: text,
+      image: image?.data,
+      imageMediaType: image?.mediaType,
+      imageName: image?.name,
+    };
     const historyMessages = [...messages, userMessage];
-    setInput("");
-    clearImage();
     setCurrentMessageUsage(null);
     setMessages((prev) => [...prev, userMessage]);
     setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
     setStreaming(true);
 
     abortRef.current = sendChatStream({
-      message: msg,
+      message: text,
       chatId: selectedChatId,
-      image: sentImage || undefined,
-      imageMediaType: sentMediaType || undefined,
+      image: image?.data,
+      imageMediaType: image?.mediaType,
       messages: historyMessages,
       onToken,
       onDone,
       onError,
       onTitle,
     });
-  };
+  }, [streaming, selectedChatId, messages, onToken, onDone, onError, onTitle]);
 
   const handleLogout = async () => {
     abortRef.current?.abort();
     await logout();
     navigate("/login");
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !file.type.startsWith("image/")) {
-      e.target.value = "";
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      const base64 = result.split(",")[1];
-      setImageData(base64);
-      setImageMediaType(file.type);
-      setImageName(file.name);
-      fileInputRef.current?.blur();
-      textInputRef.current?.focus();
-    };
-    reader.readAsDataURL(file);
-    e.target.value = "";
-  };
-
-  const clearImage = () => {
-    setImageData(null);
-    setImageMediaType(null);
-    setImageName("");
   };
 
   const selectedChat = selectedChatId
@@ -209,30 +167,7 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-screen bg-background">
-      {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <h1 className="text-lg font-semibold text-foreground">Homework Helper</h1>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">{user?.email}</span>
-          <ModeToggle />
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate("/debug")}
-            title="Debug"
-          >
-            <Bug className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleLogout}
-            title="Logout"
-          >
-            <LogOut className="h-4 w-4" />
-          </Button>
-        </div>
-      </header>
+      <ChatHeader email={user?.email} onDebug={() => navigate("/debug")} onLogout={handleLogout} />
 
       <div className="flex flex-1 overflow-hidden">
         <Sidebar
@@ -247,111 +182,17 @@ export default function ChatPage() {
         />
         <ResizeHandle startWidth={sidebarWidth} onResize={setSidebarWidth} />
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {!selectedChatId ? (
-            <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-              Select a chat or create a new one to get started.
-            </div>
-          ) : messages.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-              Ask me anything about your homework!
-            </div>
-          ) : (
-            messages.map((msg, i) => (
-              <MessageBubble key={i} msg={msg} isStreaming={streaming} isLast={i === messages.length - 1} />
-            ))
-          )}
-          <div ref={messagesEndRef} />
-        </div>
+        <ChatMessages selectedChatId={selectedChatId} messages={messages} streaming={streaming} />
       </div>
 
-      {/* Input */}
-      <form onSubmit={handleSubmit} className="border-t border-border p-4">
-        <div className="max-w-2xl mx-auto space-y-2">
-          {imageData && (
-            <div className="flex items-center gap-2">
-              <Attachment size="sm">
-                <AttachmentMedia variant="image">
-                  <img
-                    src={`data:${imageMediaType};base64,${imageData}`}
-                    alt={imageName}
-                    className="h-full w-full object-cover"
-                  />
-                </AttachmentMedia>
-                <AttachmentContent>
-                  <AttachmentTitle>{imageName}</AttachmentTitle>
-                </AttachmentContent>
-                <AttachmentActions>
-                  <AttachmentAction
-                    type="button"
-                    aria-label="Remove attachment"
-                    onClick={clearImage}
-                  >
-                    <X className="h-3 w-3" />
-                  </AttachmentAction>
-                </AttachmentActions>
-              </Attachment>
-            </div>
-          )}
-          <div className="flex gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleFileSelect}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={streaming || !selectedChatId}
-              title="Attach image"
-              className="cursor-pointer"
-            >
-              <Paperclip className="h-4 w-4" />
-            </Button>
-            <Input
-              ref={textInputRef}
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={imageData ? "Add a message (optional)..." : "Type your message..."}
-              disabled={streaming || !selectedChatId}
-            />
-            <Button
-              type="submit"
-              disabled={streaming || !selectedChatId || !input.trim()}
-              title={streaming ? "Waiting for response..." : "Send message"}
-              className="cursor-pointer"
-            >
-              <Send className="h-4 w-4" />
-            </Button>
-            {selectedChat && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button type="button" className="relative flex items-center justify-center w-9 h-9 shrink-0">
-                    <svg className="w-6 h-6 -rotate-90" viewBox="0 0 36 36">
-                      <circle cx="18" cy="18" r="15" fill="none" stroke="currentColor" strokeWidth="3" className="text-border" />
-                      <circle
-                        cx="18" cy="18" r="15" fill="none" stroke="currentColor" strokeWidth="3"
-                        strokeDasharray={`${chatTokenPercent} 100`}
-                        className="text-muted-foreground/40"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{selectedChat.total_tokens.toLocaleString()} / {chatTokenLimit.toLocaleString()} tokens</p>
-                </TooltipContent>
-              </Tooltip>
-            )}
-          </div>
-        </div>
-      </form>
+      <ChatInput
+        onSubmit={handleSubmitMessage}
+        streaming={streaming}
+        selectedChatId={selectedChatId}
+        selectedChatTokens={selectedChat?.total_tokens ?? 0}
+        chatTokenLimit={chatTokenLimit}
+        chatTokenPercent={chatTokenPercent}
+      />
     </div>
   );
 }
