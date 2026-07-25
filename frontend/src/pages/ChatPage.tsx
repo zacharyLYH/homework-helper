@@ -101,9 +101,16 @@ export default function ChatPage() {
   }, []);
 
   const onDone = useCallback((usage: TokenUsage | undefined) => {
-    if (usage) setCurrentMessageUsage(usage);
+    if (usage) {
+      setCurrentMessageUsage(usage);
+      setChatsBySubject((prev) => {
+        const sid = Object.keys(prev).find((k) => prev[Number(k)]?.some((c) => c.id === selectedChatId));
+        if (!sid) return prev;
+        return { ...prev, [Number(sid)]: prev[Number(sid)].map((c) => (c.id === selectedChatId ? { ...c, total_tokens: c.total_tokens + usage.total_tokens } : c)) };
+      });
+    }
     setStreaming(false);
-  }, []);
+  }, [selectedChatId]);
 
   const onTitle = useCallback((title: string) => {
     setChatsBySubject((prev) => {
