@@ -13,6 +13,18 @@ export async function requestCode(email: string): Promise<{ message: string }> {
   return res.json();
 }
 
+export async function refreshToken(): Promise<{ access_token: string }> {
+  const res = await fetch(`${API_BASE}/auth/refresh`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Refresh failed");
+  }
+  return res.json();
+}
+
 export async function logout(): Promise<void> {
   await fetch(`${API_BASE}/auth/logout`, { method: "POST", credentials: "include" });
 }

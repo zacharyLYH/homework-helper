@@ -80,6 +80,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT UNIQUE NOT NULL,
+                refresh_token_expires_at TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
@@ -126,17 +127,6 @@ def init_db():
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
         """)
-        # Migrate existing databases: add token columns to chats if missing
-        cursor = conn.execute("PRAGMA table_info(chats)")
-        existing_cols = {row["name"] for row in cursor.fetchall()}
-        for col in ("total_tokens", "input_tokens", "output_tokens"):
-            if col not in existing_cols:
-                conn.execute(f"ALTER TABLE chats ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0")
-        # Migrate existing databases: add token_count column to messages if missing
-        cursor = conn.execute("PRAGMA table_info(messages)")
-        existing_msg_cols = {row["name"] for row in cursor.fetchall()}
-        if "token_count" not in existing_msg_cols:
-            conn.execute("ALTER TABLE messages ADD COLUMN token_count INTEGER NOT NULL DEFAULT 0")
     log.info("Database initialized")
 
 
@@ -165,6 +155,16 @@ def verify_code(email: str, code: str) -> bool:
             return False
         conn.execute("DELETE FROM verification_codes WHERE id = ?", (row["id"],))
         return datetime.now(timezone.utc) <= datetime.fromisoformat(row["expires_at"])
+
+
+def set_user_refresh_expiry(user_id: int, expires_at: str | None) -> None:
+    with get_conn() as conn:
+        conn.execute("UPDATE users SET refresh_token_expires_at = ? WHERE id = ?", (expires_at, user_id))
+
+def get_user_refresh_expiry(email: str) -> str | None:
+    with get_conn() as conn:
+        row = conn.execute("SELECT refresh_token_expires_at FROM users WHERE email = ?", (email,)).fetchone()
+        return row["refresh_token_expires_at"] if row else None
 
 
 def list_all_users() -> list[User]:

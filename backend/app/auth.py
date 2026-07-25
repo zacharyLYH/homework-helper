@@ -10,13 +10,28 @@ from app.schemas import User
 
 log = get_logger(__name__)
 
+ACCESS_TOKEN_EXPIRY_MINUTES = 3
+REFRESH_TOKEN_EXPIRY_DAYS = 180
+
 
 def create_access_token(user: User) -> str:
     payload = {
         "sub": str(user.id),
         "email": user.email,
+        "type": "access",
         "iat": datetime.now(timezone.utc),
-        "exp": datetime.now(timezone.utc) + timedelta(hours=24),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRY_MINUTES),
+    }
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm="HS256")
+
+
+def create_refresh_token(user: User) -> str:
+    payload = {
+        "sub": str(user.id),
+        "email": user.email,
+        "type": "refresh",
+        "iat": datetime.now(timezone.utc),
+        "exp": datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRY_DAYS),
     }
     return jwt.encode(payload, settings.jwt_secret_key, algorithm="HS256")
 

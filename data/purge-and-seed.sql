@@ -8,6 +8,7 @@ DELETE FROM sqlite_sequence;
 CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT UNIQUE NOT NULL,
+    refresh_token_expires_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -54,9 +55,9 @@ CREATE TABLE verification_codes (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-INSERT INTO users (email) VALUES ('alice@school.edu');
-INSERT INTO users (email) VALUES ('bob@school.edu');
-INSERT INTO users (email) VALUES ('leeyihong03@gmail.com');
+INSERT INTO users (email, refresh_token_expires_at) VALUES ('alice@school.edu', datetime('now', '+6 months'));
+INSERT INTO users (email, refresh_token_expires_at) VALUES ('bob@school.edu', datetime('now', '+6 months'));
+INSERT INTO users (email, refresh_token_expires_at) VALUES ('leeyihong03@gmail.com', datetime('now', '+6 months'));
 
 INSERT INTO subjects (user_id, name) VALUES (1, 'AP Calculus BC');
 INSERT INTO subjects (user_id, name) VALUES (1, 'Physics C');

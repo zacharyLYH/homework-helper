@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
-import { verifyCode, logout as apiLogout, type User } from "@/lib/api";
+import { verifyCode, refreshToken, logout as apiLogout, type User } from "@/lib/api";
 
 interface AuthContextType {
   user: User | null;
@@ -15,14 +15,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/auth/me", { credentials: "include" })
-      .then((res) => {
-        if (res.ok) return res.json();
-        throw new Error();
-      })
-      .then((data) => setUser(data))
-      .catch(() => setUser(null))
-      .finally(() => setLoading(false));
+    let cancelled = false;
+
+    async function checkSession() {
+      try {
+        const res = await fetch("/api/auth/me", { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled) setUser(data);
+          return;
+        }
+        await refreshToken();
+        const meRes = await fetch("/api/auth/me", { credentials: "include" });
+        if (meRes.ok) {
+          const data = await meRes.json();
+          if (!cancelled) setUser(data);
+          return;
+        }
+      } catch {
+        // Both failed — not authenticated
+      }
+      if (!cancelled) setUser(null);
+    }
+
+    checkSession().finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+
+    const interval = setInterval(async () => {
+      try {
+        await refreshToken();
+      } catch {
+        // refresh failed silently
+      }
+    }, 120_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, []);
 
   const login = async (email: string, code: string) => {
