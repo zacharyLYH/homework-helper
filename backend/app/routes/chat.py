@@ -1,3 +1,4 @@
+import asyncio
 import json
 import uuid
 from typing import AsyncGenerator
@@ -113,48 +114,75 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
         full_reply = ""
         model_used = "unknown"
         total_usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
-        try:
-            async for event in compiled_graph.astream_events( # call the langgraph graph
-                initial_state, config=config, version="v2"
-            ):
-                node_name = event.get("metadata", {}).get("langgraph_node", "")
-                if node_name in ("router", "tool_executor"):
-                    continue
 
-                if event["event"] == "on_chat_model_stream":
-                    chunk = event["data"].get("chunk")
-                    if not isinstance(chunk, AIMessageChunk) or not chunk.content:
+        title_events: list[str] = []
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def _stream_graph():
+            nonlocal full_reply, model_used, total_usage
+            try:
+                async for event in compiled_graph.astream_events(
+                    initial_state, config=config, version="v2"
+                ):
+                    node_name = event.get("metadata", {}).get("langgraph_node", "")
+                    if node_name in ("router", "tool_executor"):
                         continue
 
-                    content = str(chunk.content)
-                    full_reply += content
-                    yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+                    if event["event"] == "on_chat_model_stream":
+                        chunk = event["data"].get("chunk")
+                        if not isinstance(chunk, AIMessageChunk) or not chunk.content:
+                            continue
 
-                elif event["event"] == "on_chat_model_end":
-                    output = event["data"].get("output")
-                    if isinstance(output, AIMessage):
-                        resp_meta = getattr(output, "response_metadata", None) or {}
-                        raw_model = resp_meta.get("model_name", "")
-                        if raw_model:
-                            n = len(raw_model)
-                            for r in range(n, 0, -1):
-                                if n % r == 0:
-                                    part_len = n // r
-                                    part = raw_model[:part_len]
-                                    if part * r == raw_model:
-                                        model_used = part
-                                        break
-                        usage = getattr(output, "usage_metadata", None)
-                        if usage:
-                            total_usage["input_tokens"] = usage.get("input_tokens", 0)
-                            total_usage["output_tokens"] = usage.get("output_tokens", 0)
-                            total_usage["total_tokens"] = usage.get("total_tokens", 0)
-            _save_assistant_message(req.chat_id, full_reply, model_used, total_usage)
-            async for event in _maybe_generate_title(req.chat_id):
-                yield event
-            yield f"data: {json.dumps({'type': 'done', 'thread_id': thread_id, 'model': model_used, 'usage': total_usage})}\n\n"
-        except Exception as e:
-            log.error("Stream execution failed: %s", e, exc_info=True)
-            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+                        content = str(chunk.content)
+                        full_reply += content
+                        await queue.put(f"data: {json.dumps({'type': 'token', 'content': content})}\n\n")
+
+                    elif event["event"] == "on_chat_model_end":
+                        output = event["data"].get("output")
+                        if isinstance(output, AIMessage):
+                            resp_meta = getattr(output, "response_metadata", None) or {}
+                            raw_model = resp_meta.get("model_name", "")
+                            if raw_model:
+                                n = len(raw_model)
+                                for r in range(n, 0, -1):
+                                    if n % r == 0:
+                                        part_len = n // r
+                                        part = raw_model[:part_len]
+                                        if part * r == raw_model:
+                                            model_used = part
+                                            break
+                            usage = getattr(output, "usage_metadata", None)
+                            if usage:
+                                total_usage["input_tokens"] = usage.get("input_tokens", 0)
+                                total_usage["output_tokens"] = usage.get("output_tokens", 0)
+                                total_usage["total_tokens"] = usage.get("total_tokens", 0)
+            except Exception as e:
+                log.error("Stream execution failed: %s", e, exc_info=True)
+            finally:
+                await queue.put(None)
+
+        async def _stream_title():
+            if req.chat_id:
+                async for event in _maybe_generate_title(req.chat_id):
+                    title_events.append(event)
+
+        graph_task = asyncio.create_task(_stream_graph())
+        title_task = asyncio.create_task(_stream_title())
+
+        # Title finishes fast — wait, yield its events first
+        await title_task
+        for event in title_events:
+            yield event
+
+        # Then stream graph tokens from the queue (may still be filling in real-time)
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield item
+
+        await graph_task
+        _save_assistant_message(req.chat_id, full_reply, model_used, total_usage)
+        yield f"data: {json.dumps({'type': 'done', 'thread_id': thread_id, 'model': model_used, 'usage': total_usage})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
