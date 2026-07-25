@@ -91,12 +91,13 @@ export default function ChatPage() {
   }, [currentMessageUsage, streaming]);
 
   const onToken = useCallback((token: string) => {
-    setMessages((prev) => {
-      const updated = [...prev];
-      const last = updated[updated.length - 1];
-      if (last.role === "assistant") last.content += token;
-      return updated;
-    });
+    setMessages((prev) =>
+      prev.map((msg, i) =>
+        i === prev.length - 1 && msg.role === "assistant"
+          ? { ...msg, content: msg.content + token }
+          : msg,
+      ),
+    );
   }, []);
 
   const onDone = useCallback((usage: TokenUsage | undefined) => {

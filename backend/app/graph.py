@@ -1,14 +1,13 @@
+from collections.abc import AsyncGenerator
 from typing import Literal
 
-from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
-from openai import RateLimitError
-from pydantic import SecretStr
 
-from app.config import settings
+from app.llm import stream_llm
 from app.logging import get_logger
 from app.schemas import GraphState
 from app.tools import ALL_TOOLS, REAL_TOOLS
@@ -16,55 +15,15 @@ from app.tools import ALL_TOOLS, REAL_TOOLS
 log = get_logger(__name__)
 
 
-# --- System prompts ---
-
 MATH_SYSTEM_PROMPT = "You are a math tutor. Show step-by-step reasoning. Use the calculator tool when needed."
 CODE_SYSTEM_PROMPT = "You are a senior software engineer. Help with code questions clearly and concisely."
 GENERAL_SYSTEM_PROMPT = "You are a helpful assistant. Answer clearly and concisely."
-
-
-# --- LLM ---
-
-def _make_llm(model: str) -> ChatOpenAI:
-    return ChatOpenAI(
-        base_url=settings.openrouter_base_url,
-        api_key=SecretStr(settings.openrouter_api_key) if settings.openrouter_api_key else SecretStr(""),
-        model=model,
-        temperature=0.7,
-        max_completion_tokens=1024,
-    )
-
-def _chat_models() -> list[str]:
-    """Returns ordered list of models to try for main chat.
-    Dev uses openrouter/free; prod cycles through Gemini models on quota errors."""
-    if settings.environment == "dev":
-        return ["openrouter/free"]
-    return settings.available_models
-
-def _cycling_invoke(messages: list, bind_tools: list | None = None) -> tuple[BaseMessage, str]:
-    """Invoke LLM, cycling through chat models on quota exhaustion.
-    Returns (response_message, model_used)."""
-    last_err: Exception = RuntimeError("No models configured")
-    for model in _chat_models():
-        llm = _make_llm(model)
-        bound = llm.bind_tools(bind_tools) if bind_tools else llm
-        try:
-            log.debug(f"Invoking model {model} with messages: {messages}")
-            return bound.invoke(messages), model
-        except RateLimitError as e:
-            log.warning(f"Model {model} quota exceeded, trying next model")
-            last_err = e
-    raise last_err
-
-# Always use the free model for lightweight tasks like title generation
-title_llm: ChatOpenAI = _make_llm("openrouter/free")
 
 
 # --- Custom tool executor that updates category in state ---
 
 
 def tool_executor(state: GraphState) -> dict:
-    """Execute tool calls and update category if the route tool was called."""
     last_msg = state["messages"][-1]
     if not isinstance(last_msg, AIMessage) or not last_msg.tool_calls:
         return {"messages": []}
@@ -92,37 +51,41 @@ def tool_executor(state: GraphState) -> dict:
 # --- Nodes ---
 
 
-def _node_with_prompt(state: GraphState, system_prompt: str, bind_tools: list | None = None) -> dict:
-    """Shared node body: optionally prepend a SystemMessage, invoke LLM, return updated state."""
+async def _node_with_prompt(
+    state: GraphState,
+    system_prompt: str,
+    bind_tools: list | None = None,
+    config: RunnableConfig | None = None,
+) -> AsyncGenerator[dict, None]:
     messages = state["messages"]
     if system_prompt:
         messages = [SystemMessage(content=system_prompt)] + messages
-    response, model = _cycling_invoke(messages, bind_tools=bind_tools)
-    return {"messages": [response], "model": model}
+    async for chunk, _model in stream_llm(messages, bind_tools=bind_tools, config=config):
+        yield {"messages": [chunk]}
 
 
-def router(state: GraphState) -> dict:
-    """Classify the user message and optionally call tools."""
+async def router(state: GraphState, config: RunnableConfig | None = None) -> AsyncGenerator[dict, None]:
     log.info("Router node invoked")
-    return _node_with_prompt(state, "", bind_tools=ALL_TOOLS)
+    async for update in _node_with_prompt(state, "", bind_tools=ALL_TOOLS, config=config):
+        yield update
 
 
-def math_solver(state: GraphState) -> dict:
-    """Specialized math tutor node."""
+async def math_solver(state: GraphState, config: RunnableConfig | None = None) -> AsyncGenerator[dict, None]:
     log.info("Math solver node invoked")
-    return _node_with_prompt(state, MATH_SYSTEM_PROMPT, bind_tools=REAL_TOOLS)
+    async for update in _node_with_prompt(state, MATH_SYSTEM_PROMPT, bind_tools=REAL_TOOLS, config=config):
+        yield update
 
 
-def code_helper(state: GraphState) -> dict:
-    """Senior software engineer response."""
+async def code_helper(state: GraphState, config: RunnableConfig | None = None) -> AsyncGenerator[dict, None]:
     log.info("Code helper node invoked")
-    return _node_with_prompt(state, CODE_SYSTEM_PROMPT)
+    async for update in _node_with_prompt(state, CODE_SYSTEM_PROMPT, config=config):
+        yield update
 
 
-def responder(state: GraphState) -> dict:
-    """General-purpose response node."""
+async def responder(state: GraphState, config: RunnableConfig | None = None) -> AsyncGenerator[dict, None]:
     log.info("Responder node invoked")
-    return _node_with_prompt(state, GENERAL_SYSTEM_PROMPT)
+    async for update in _node_with_prompt(state, GENERAL_SYSTEM_PROMPT, config=config):
+        yield update
 
 
 # --- Conditional edges ---

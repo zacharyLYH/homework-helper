@@ -4,12 +4,13 @@ from typing import AsyncGenerator
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from langchain_core.runnables import RunnableConfig
 
 from app.auth import get_current_user
 from app.db import get_chat, get_messages, save_message, update_chat_title, update_chat_token_usage
-from app.graph import compiled_graph, title_llm
+from app.graph import compiled_graph
+from app.llm import title_llm
 from app.logging import get_logger
 from app.schemas import ChatRequest, User
 
@@ -81,7 +82,6 @@ async def generate_title_stream(chat_id: int) -> AsyncGenerator[str, None]:
 
 
 async def _maybe_generate_title(chat_id: int | None) -> AsyncGenerator[str, None]:
-    """Yield SSE title events for new chats, then persist the final title."""
     if not chat_id:
         return
     existing = get_chat(chat_id)
@@ -114,26 +114,41 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
         model_used = "unknown"
         total_usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
         try:
-            async for msg, metadata in compiled_graph.astream(
-                initial_state, config=config, stream_mode="messages"
+            async for event in compiled_graph.astream_events( # call the langgraph graph
+                initial_state, config=config, version="v2"
             ):
-                if isinstance(msg, AIMessage) and msg.content:
-                    node = metadata["langgraph_node"] if isinstance(metadata, dict) else ""
-                    if node not in ("router", "tool_executor"):
-                        content = msg.content if isinstance(msg.content, str) else str(msg.content)
-                        full_reply += content
-                        yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+                node_name = event.get("metadata", {}).get("langgraph_node", "")
+                if node_name in ("router", "tool_executor"):
+                    continue
 
-                if isinstance(msg, AIMessage):
-                    resp_meta = getattr(msg, "response_metadata", None) or {}
-                    if resp_meta.get("model_name"):
-                        model_used = resp_meta["model_name"]
-                    usage = getattr(msg, "usage_metadata", None)
-                    if usage:
-                        total_usage["input_tokens"] += usage.get("input_tokens", 0)
-                        total_usage["output_tokens"] += usage.get("output_tokens", 0)
-                        total_usage["total_tokens"] += usage.get("total_tokens", 0)
+                if event["event"] == "on_chat_model_stream":
+                    chunk = event["data"].get("chunk")
+                    if not isinstance(chunk, AIMessageChunk) or not chunk.content:
+                        continue
 
+                    content = str(chunk.content)
+                    full_reply += content
+                    yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+
+                elif event["event"] == "on_chat_model_end":
+                    output = event["data"].get("output")
+                    if isinstance(output, AIMessage):
+                        resp_meta = getattr(output, "response_metadata", None) or {}
+                        raw_model = resp_meta.get("model_name", "")
+                        if raw_model:
+                            n = len(raw_model)
+                            for r in range(n, 0, -1):
+                                if n % r == 0:
+                                    part_len = n // r
+                                    part = raw_model[:part_len]
+                                    if part * r == raw_model:
+                                        model_used = part
+                                        break
+                        usage = getattr(output, "usage_metadata", None)
+                        if usage:
+                            total_usage["input_tokens"] = usage.get("input_tokens", 0)
+                            total_usage["output_tokens"] = usage.get("output_tokens", 0)
+                            total_usage["total_tokens"] = usage.get("total_tokens", 0)
             _save_assistant_message(req.chat_id, full_reply, model_used, total_usage)
             async for event in _maybe_generate_title(req.chat_id):
                 yield event
