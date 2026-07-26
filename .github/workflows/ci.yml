@@ -13,22 +13,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-
-      - name: Install Python dependencies
-        working-directory: backend
-        run: uv sync --frozen
-
-      - name: Pyright (backend)
-        working-directory: backend
-        run: uv run pyright app/
-
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -43,6 +27,22 @@ jobs:
       - name: TypeScript check (frontend)
         working-directory: frontend
         run: npx tsc --noEmit
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install Python dependencies
+        working-directory: backend
+        run: uv sync --frozen
+
+      - name: Pyright (backend)
+        working-directory: backend
+        run: npx pyright app/
 
   build-frontend:
     name: Build Frontend
