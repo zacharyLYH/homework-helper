@@ -20,7 +20,7 @@ The following list of rules is true no matter what kind of code you're writing, 
 This is how you know you've written good code by my definition.
 
 1. Your code is modularized-as-needed. The signs: your changes are not a thin modules, your changes are only in a module IFF its theoretically a medium likelihood replaceable component (as long as contract is kept the same).
-2. (Future, not yet now) Your code changes come with some form of test. Ideally its a e2e test and or UAT test but if not ameanable to those higher level testing then at least a unit test. Happy, sad, and common edge cases need to be tested.
+2. Your code changes come with some form of test. Ideally its a e2e test and or UAT test but if not ameanable to those higher level testing then at least a unit test. Happy, sad, and common edge cases need to be tested.
 3. There are industry established coding standards for the technologies we're using. We should always try to align as a default, and deviate only if the user explicitly deviates. But, it should then be documented why we're not following best practices. 
 
 > Note: You shouldn't be eagerly write tests until the user has confirmed that the code looks correct enough to start testing. Otherwise you might be wasting the user's time and tokens if the user is not happy with the code changes yet.
@@ -31,6 +31,7 @@ This is how you know you've written good code by my definition.
 1. Most code Python should be typed. Only where it is very cumbersome to create/maintain a type are you allowed to use `Any` type or ask to ignore type checking by the LSP.
 2. On code change complete, run `uv run pyright app/` to make sure no LSP issues.
 3. To  In VSCode do `Cmd + ,`. Search for `python.analysis.typeCheckingMode`. Change from `Off` to `Standard`. This activates the LSP.
+4. Tests should be run after every change to certify no regressions. New tests should also be added to assert new behavior if there is a backend change `python -m pytest tests/ -v`.
 
 ## React frontend
 1. Sparingly use advanced hooks, only if performance of some component is critical should you use advanced hooks. Otherwise stick to simple ones like `useState()` and `useEffect()`

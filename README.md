@@ -367,6 +367,10 @@ Set in `backend/.env` (copied from `.env.example` by setup.sh):
 | `DATABASE_PATH` | no | `data/homework_helper.db` | SQLite file path |
 | `BACKEND_URL` | no | `http://127.0.0.1:8000` | Frontend→backend URL (set in Docker) |
 
+8. Local testing
+
+`python -m pytest tests/ -v`
+
 #### Obtaining SMTP credentials
 
 **Gmail (recommended for dev):**
