@@ -130,6 +130,26 @@ export default function ChatPage() {
     setStreaming(false);
   }, []);
 
+  const sendMessage = useCallback((userMessage: ChatMessage, contextMessages: ChatMessage[]) => {
+    if (streaming || !selectedChatId) return;
+
+    setCurrentMessageUsage(null);
+    setMessages([...contextMessages, { role: "assistant", content: "" } as ChatMessage]);
+    setStreaming(true);
+
+    abortRef.current = sendChatStream({
+      message: userMessage.content,
+      chatId: selectedChatId,
+      image: userMessage.image,
+      imageMediaType: userMessage.imageMediaType,
+      messages: contextMessages,
+      onToken,
+      onDone,
+      onError,
+      onTitle,
+    });
+  }, [streaming, selectedChatId, onToken, onDone, onError, onTitle]);
+
   const handleSubmitMessage = useCallback(async (text: string, image?: { data: string; mediaType: string; name: string }) => {
     if (!text || streaming || !selectedChatId) return;
 
@@ -140,24 +160,21 @@ export default function ChatPage() {
       imageMediaType: image?.mediaType,
       imageName: image?.name,
     };
-    const historyMessages = [...messages, userMessage];
-    setCurrentMessageUsage(null);
-    setMessages((prev) => [...prev, userMessage]);
-    setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
-    setStreaming(true);
+    sendMessage(userMessage, [...messages, userMessage]);
+  }, [streaming, selectedChatId, messages, sendMessage]);
 
-    abortRef.current = sendChatStream({
-      message: text,
-      chatId: selectedChatId,
-      image: image?.data,
-      imageMediaType: image?.mediaType,
-      messages: historyMessages,
-      onToken,
-      onDone,
-      onError,
-      onTitle,
-    });
-  }, [streaming, selectedChatId, messages, onToken, onDone, onError, onTitle]);
+  const handleRetry = useCallback((index: number) => {
+    if (streaming || !selectedChatId) return;
+
+    let targetIndex = index;
+    while (targetIndex >= 0 && messages[targetIndex].role !== "user") {
+      targetIndex--;
+    }
+    if (targetIndex < 0) return;
+
+    const userMessage = { ...messages[targetIndex] };
+    sendMessage(userMessage, [...messages.slice(0, targetIndex), userMessage]);
+  }, [streaming, selectedChatId, messages, sendMessage]);
 
   const handleLogout = async () => {
     abortRef.current?.abort();
@@ -190,7 +207,7 @@ export default function ChatPage() {
         />
         <ResizeHandle startWidth={sidebarWidth} onResize={setSidebarWidth} />
 
-        <ChatMessages selectedChatId={selectedChatId} messages={messages} streaming={streaming} />
+        <ChatMessages selectedChatId={selectedChatId} messages={messages} streaming={streaming} onRetry={handleRetry} />
       </div>
 
       <ChatInput

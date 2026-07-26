@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { Send, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Attachment, AttachmentMedia, AttachmentContent, AttachmentTitle, AttachmentActions, AttachmentAction } from "@/components/ui/attachment";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -20,7 +20,7 @@ export default function ChatInput({ onSubmit, streaming, selectedChatId, selecte
   const [imageMediaType, setImageMediaType] = useState<string | null>(null);
   const [imageName, setImageName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const textInputRef = useRef<HTMLInputElement>(null);
+  const textInputRef = useRef<HTMLTextAreaElement>(null);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -48,7 +48,7 @@ export default function ChatInput({ onSubmit, streaming, selectedChatId, selecte
     setImageName("");
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: { preventDefault: () => void }) => {
     e.preventDefault();
     const msg = input.trim();
     if (!msg || streaming || !selectedChatId) return;
@@ -102,13 +102,20 @@ export default function ChatInput({ onSubmit, streaming, selectedChatId, selecte
           >
             <Paperclip className="h-4 w-4" />
           </Button>
-          <Input
+          <Textarea
             ref={textInputRef}
-            type="text"
+            rows={1}
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSubmit(e);
+              }
+            }}
             placeholder={imageData ? "Add a message (optional)..." : "Type your message..."}
             disabled={streaming || !selectedChatId}
+            className="min-h-0 max-h-40 resize-none"
           />
           <Button
             type="submit"

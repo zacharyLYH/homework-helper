@@ -2,7 +2,7 @@ import { useRef, useEffect } from "react";
 import MessageBubble from "@/components/MessageBubble";
 import type { ChatMessage } from "@/lib/api";
 
-export default function ChatMessages({ selectedChatId, messages, streaming }: { selectedChatId: number | null; messages: ChatMessage[]; streaming: boolean }) {
+export default function ChatMessages({ selectedChatId, messages, streaming, onRetry }: { selectedChatId: number | null; messages: ChatMessage[]; streaming: boolean; onRetry?: (index: number) => void }) {
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -21,7 +21,7 @@ export default function ChatMessages({ selectedChatId, messages, streaming }: { 
         </div>
       ) : (
         messages.map((msg, i) => (
-          <MessageBubble key={i} msg={msg} isStreaming={streaming} isLast={i === messages.length - 1} />
+          <MessageBubble key={i} msg={msg} isStreaming={streaming} isLast={i === messages.length - 1} onRetry={onRetry ? () => onRetry(i) : undefined} />
         ))
       )}
       <div ref={endRef} />

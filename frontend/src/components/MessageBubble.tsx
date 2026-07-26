@@ -1,12 +1,14 @@
-import { Loader2 } from "lucide-react";
+import { Copy, Loader2, RefreshCw } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
-import { Message, MessageContent } from "@/components/ui/message";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Message, MessageContent, MessageFooter } from "@/components/ui/message";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import type { ChatMessage } from "@/lib/api";
 
-export default function MessageBubble({ msg, isStreaming, isLast }: { msg: ChatMessage; isStreaming: boolean; isLast: boolean }) {
+export default function MessageBubble({ msg, isStreaming, isLast, onRetry }: { msg: ChatMessage; isStreaming: boolean; isLast: boolean; onRetry?: () => void }) {
   const isUser = msg.role === "user";
 
   if (!isUser && !msg.content && isStreaming && isLast) {
@@ -46,6 +48,26 @@ export default function MessageBubble({ msg, isStreaming, isLast }: { msg: ChatM
             )}
           </BubbleContent>
         </Bubble>
+        <MessageFooter>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-xs" onClick={() => navigator.clipboard.writeText(msg.content)} className="cursor-pointer">
+                <Copy />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Copy</TooltipContent>
+          </Tooltip>
+          {!(isStreaming && isLast) && onRetry && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon-xs" onClick={onRetry} className="cursor-pointer">
+                  <RefreshCw />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Retry</TooltipContent>
+            </Tooltip>
+          )}
+        </MessageFooter>
       </MessageContent>
     </Message>
   );
