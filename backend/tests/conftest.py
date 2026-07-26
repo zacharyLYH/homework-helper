@@ -8,6 +8,7 @@ from httpx import AsyncClient, ASGITransport
 
 os.environ["JWT_SECRET_KEY"] = "test-secret-key"
 os.environ["OPENROUTER_API_KEY"] = "sk-test-key"
+os.environ["STRUCTURED_LOGGING_PCT"] = "100"
 
 
 @pytest.fixture(autouse=True)

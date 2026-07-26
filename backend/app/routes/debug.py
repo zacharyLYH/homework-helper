@@ -1,8 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from app.config import settings
-from app.db import get_conn, list_all_users, list_chats, list_subjects, get_messages
+from app.db import get_conn, list_all_users, list_chats, list_subjects, get_messages, list_structured_logs, list_structured_logs_for_message, list_messages_with_logs
 from app.logging import get_logger
 
 log = get_logger(__name__)
@@ -60,3 +60,17 @@ async def execute_sql(req: SqlRequest):
     except Exception as e:
         log.error("SQL execution failed: %s", e)
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/api/debug/logs")
+async def get_logs(message_id: int | None = Query(None)):
+    _check_prod()
+    if message_id is not None:
+        return list_structured_logs_for_message(message_id)
+    return list_structured_logs()
+
+
+@router.get("/api/debug/traces")
+async def list_traces():
+    _check_prod()
+    return list_messages_with_logs()

@@ -292,6 +292,27 @@ export async function getDebugMessages(chatId: number): Promise<Message[]> {
   return res.json();
 }
 
+export interface StructuredLog {
+  id: number;
+  type: string;
+  created_at: string;
+  message_id: number | null;
+  log: string;
+}
+
+export async function getStructuredLogs(messageId?: number): Promise<StructuredLog[]> {
+  const params = messageId ? `?message_id=${messageId}` : "";
+  const res = await fetch(`${API_BASE}/debug/logs${params}`, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to fetch structured logs");
+  return res.json();
+}
+
+export async function getMessagesWithLogs(): Promise<Message[]> {
+  const res = await fetch(`${API_BASE}/debug/traces`, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to fetch messages with logs");
+  return res.json();
+}
+
 export async function executeSql(sql: string): Promise<SqlResult> {
   const res = await fetch(`${API_BASE}/debug/sql`, {
     method: "POST",

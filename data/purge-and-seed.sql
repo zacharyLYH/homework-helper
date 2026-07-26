@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS structured_logs;
 DROP TABLE IF EXISTS messages;
 DROP TABLE IF EXISTS chats;
 DROP TABLE IF EXISTS subjects;
@@ -53,6 +54,14 @@ CREATE TABLE verification_codes (
     code TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE structured_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    message_id INTEGER,
+    log TEXT NOT NULL
 );
 
 INSERT INTO users (email, refresh_token_expires_at) VALUES ('alice@school.edu', datetime('now', '+6 months'));

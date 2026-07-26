@@ -1,18 +1,21 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   getDebugUsers,
   getDebugSubjects,
   getDebugChats,
   getDebugMessages,
+  getMessagesWithLogs,
+  getStructuredLogs,
   executeSql,
   type User,
   type Subject,
   type Chat,
   type Message,
   type SqlResult,
+  type StructuredLog,
 } from "@/lib/api";
-import { ArrowLeft, Play, ChevronRight, Database, Users, BookOpen, MessageSquare, RefreshCw } from "lucide-react";
+import { ArrowLeft, Play, ChevronRight, Database, Users, BookOpen, MessageSquare, RefreshCw, Activity, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -20,6 +23,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { ModeToggle } from "@/components/mode-toggle";
+
 
 export default function DebugPage() {
   const navigate = useNavigate();
@@ -49,6 +53,10 @@ export default function DebugPage() {
               <Database className="h-3.5 w-3.5" />
               SQL
             </TabsTrigger>
+            <TabsTrigger value="trace">
+              <Activity className="h-3.5 w-3.5" />
+              Trace
+            </TabsTrigger>
           </TabsList>
         </div>
 
@@ -57,6 +65,9 @@ export default function DebugPage() {
         </TabsContent>
         <TabsContent value="sql" className="flex-1 overflow-hidden m-0">
           <SqlPanel />
+        </TabsContent>
+        <TabsContent value="trace" className="flex-1 overflow-hidden m-0">
+          <TracePanel />
         </TabsContent>
       </Tabs>
     </div>
@@ -235,7 +246,6 @@ function BrowserPanel() {
 
   return (
     <div className="flex h-full">
-      {/* Left sidebar - hierarchy */}
       <div className="w-72 border-r border-border bg-background flex flex-col shrink-0">
         <div className="p-3 border-b border-border flex items-center justify-between">
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Data Browser</span>
@@ -270,7 +280,6 @@ function BrowserPanel() {
         </div>
       </div>
 
-      {/* Right content area */}
       <div className="flex-1 overflow-y-auto">
         {error && (
           <div className="m-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-sm text-destructive">
@@ -498,6 +507,290 @@ function SqlPanel() {
         {!result && !error && (
           <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
             Write a query and press Run or Ctrl+Enter
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// --- Trace Panel ---
+
+const TYPE_META: Record<string, { component: string; color: string }> = {
+  chat_request:     { component: "Chat", color: "#3b82f6" },
+  chat_response:    { component: "Chat", color: "#3b82f6" },
+  agent_start:      { component: "Agent", color: "#22c55e" },
+  agent_tool_call:  { component: "Agent", color: "#22c55e" },
+  tool_input:       { component: "Tool", color: "#f59e0b" },
+  tool_output:      { component: "Tool", color: "#f59e0b" },
+  tool_result:      { component: "Tool", color: "#f59e0b" },
+  tool_artifact:    { component: "Tool", color: "#f59e0b" },
+  llm_request:      { component: "LLM", color: "#a855f7" },
+  llm_stream_start: { component: "LLM", color: "#a855f7" },
+  llm_stream_end:   { component: "LLM", color: "#a855f7" },
+  llm_tool_call:    { component: "LLM", color: "#a855f7" },
+  llm_quota_error:  { component: "LLM", color: "#ef4444" },
+  llm_all_models_exhausted: { component: "LLM", color: "#ef4444" },
+  graph_route:      { component: "Graph", color: "#64748b" },
+  stream_error:     { component: "System", color: "#ef4444" },
+};
+
+function getSpanMeta(type: string) {
+  return TYPE_META[type] || { component: "Other", color: "#94a3b8" };
+}
+
+function formatLogSummary(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw);
+    return Object.entries(parsed)
+      .map(([k, v]) => {
+        const val = typeof v === "object" ? JSON.stringify(v) : String(v);
+        return val.length > 60 ? val.slice(0, 60) + "..." : val;
+      })
+      .join(" ");
+  } catch {
+    return raw.slice(0, 120);
+  }
+}
+
+function formatLogPretty(raw: string): string {
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2);
+  } catch {
+    return raw;
+  }
+}
+
+type WaterfallRow = {
+  log: StructuredLog;
+  meta: { component: string; color: string };
+  offsetMs: number;
+  summary: string;
+};
+
+function WaterfallTrace({ logs, message }: { logs: StructuredLog[]; message: Message }) {
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+
+  const rows: WaterfallRow[] = useMemo(() => {
+    if (logs.length === 0) return [];
+    const t0 = new Date(logs[0].created_at).getTime();
+    return logs.map((l) => ({
+      log: l,
+      meta: getSpanMeta(l.type),
+      offsetMs: new Date(l.created_at).getTime() - t0,
+      summary: formatLogSummary(l.log),
+    }));
+  }, [logs]);
+
+  const maxMs = rows.length > 0 ? rows[rows.length - 1].offsetMs || 1 : 1;
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-4 pb-2 border-b border-border">
+        <Badge variant={message.role === "user" ? "default" : "secondary"}>
+          {message.role}
+        </Badge>
+        <span className="font-medium text-foreground">Message #{message.id}</span>
+        <span>{message.created_at}</span>
+        <span className="truncate ml-auto text-foreground/60">{message.content.slice(0, 100)}</span>
+      </div>
+
+      {/* Timeline header */}
+      <div className="flex text-[10px] text-muted-foreground mb-1 px-2">
+        <div className="w-[140px] shrink-0">Span</div>
+        <div className="flex-1 relative h-4">
+          <div className="absolute inset-0 flex">
+            {[0, 25, 50, 75, 100].map((pct) => (
+              <div key={pct} className="flex-1 border-l border-border/30 first:border-l-0 text-center">
+                {pct > 0 && <span className="block pt-0.5">+{Math.round(maxMs * pct / 100)}ms</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="w-[40px] shrink-0 text-right">Time</div>
+      </div>
+
+      {/* Rows */}
+      <div className="space-y-0.5">
+        {rows.map((row, i) => {
+          const leftPct = maxMs > 0 ? (row.offsetMs / maxMs) * 100 : 0;
+          const barWidth = Math.max(0.5, (maxMs > 0 ? ((i < rows.length - 1 ? rows[i + 1].offsetMs : maxMs) - row.offsetMs) / maxMs * 100 : 0.5));
+          const isExpanded = expandedIdx === i;
+
+          return (
+            <div key={i}>
+              <div
+                className="flex items-center gap-0 px-2 py-1.5 rounded hover:bg-accent/40 cursor-pointer transition-colors text-xs"
+                onClick={() => setExpandedIdx(isExpanded ? null : i)}
+              >
+                {/* Component + type label */}
+                <div className="w-[140px] shrink-0 flex items-center gap-1.5">
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ backgroundColor: row.meta.color }}
+                  />
+                  <span className="font-medium text-foreground/80 truncate">{row.meta.component}</span>
+                  <span className="text-muted-foreground truncate">{row.log.type.replace(/^(chat|agent|tool|llm|graph)_/, "")}</span>
+                </div>
+
+                {/* Timeline bar */}
+                <div className="flex-1 relative h-5">
+                  <div className="absolute inset-0 flex items-center">
+                    <div
+                      className="h-[6px] rounded-sm opacity-60"
+                      style={{
+                        backgroundColor: row.meta.color,
+                        marginLeft: `${leftPct}%`,
+                        width: `${Math.max(barWidth, 0.5)}%`,
+                        minWidth: "4px",
+                      }}
+                    />
+                    <span
+                      className="w-[10px] h-[10px] rounded-full border-2 border-background shrink-0 -ml-[5px]"
+                      style={{ backgroundColor: row.meta.color }}
+                    />
+                  </div>
+                </div>
+
+                {/* Time + expand indicator */}
+                <div className="w-[40px] shrink-0 text-right text-muted-foreground">
+                  +{row.offsetMs}ms
+                </div>
+                {isExpanded ? (
+                  <ChevronUp className="h-3 w-3 text-muted-foreground shrink-0 ml-1" />
+                ) : (
+                  <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0 ml-1" />
+                )}
+              </div>
+
+              {/* Expandable row: summary + raw JSON */}
+              {isExpanded && (
+                <div className="ml-[148px] mb-1 p-2 rounded bg-muted/30 border border-border/50 text-xs font-mono">
+                  <div className="text-muted-foreground mb-1 truncate">{row.summary}</div>
+                  <pre className="text-[10px] text-muted-foreground/70 whitespace-pre-wrap max-h-48 overflow-auto">
+                    {formatLogPretty(row.log.log)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TracePanel() {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [selectedMsg, setSelectedMsg] = useState<Message | null>(null);
+  const [logs, setLogs] = useState<StructuredLog[]>([]);
+  const [loadingMsgs, setLoadingMsgs] = useState(false);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [error, setError] = useState("");
+
+  const loadMessages = useCallback(async () => {
+    setLoadingMsgs(true);
+    setError("");
+    try {
+      const data = await getMessagesWithLogs();
+      setMessages(data);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoadingMsgs(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadMessages();
+  }, [loadMessages]);
+
+  const selectMessage = useCallback(async (msg: Message) => {
+    setSelectedMsg(msg);
+    setLoadingLogs(true);
+    setError("");
+    try {
+      const data = await getStructuredLogs(msg.id);
+      setLogs(data);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoadingLogs(false);
+    }
+  }, []);
+
+  return (
+    <div className="flex h-full">
+      {/* Message list sidebar */}
+      <div className="w-72 border-r border-border bg-background flex flex-col shrink-0">
+        <div className="p-3 border-b border-border flex items-center justify-between">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Messages with traces
+          </span>
+          <Button variant="ghost" size="icon" onClick={loadMessages} disabled={loadingMsgs} title="Refresh">
+            <RefreshCw className={`h-3.5 w-3.5 ${loadingMsgs ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {loadingMsgs && (
+            <div className="p-4 text-center text-xs text-muted-foreground">Loading...</div>
+          )}
+          {!loadingMsgs && messages.length === 0 && (
+            <div className="p-4 text-center text-xs text-muted-foreground">
+              Send a chat request with structured logging active
+            </div>
+          )}
+          {messages.map((msg) => (
+            <button
+              key={msg.id}
+              onClick={() => selectMessage(msg)}
+              className={`w-full text-left px-3 py-2.5 border-b border-border/50 hover:bg-accent/40 transition-colors ${
+                selectedMsg?.id === msg.id ? "bg-accent" : ""
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Badge variant={msg.role === "user" ? "default" : "secondary"} className="text-[10px] px-1.5 py-0">
+                  {msg.role}
+                </Badge>
+                <span className="text-xs font-medium text-foreground">#{msg.id}</span>
+                <span className="text-[10px] text-muted-foreground ml-auto">{msg.chat_id && `chat=${msg.chat_id}`}</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground truncate">{msg.content}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Waterfall view */}
+      <div className="flex-1 overflow-y-auto bg-background">
+        {error && (
+          <div className="m-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-sm text-destructive">
+            {error}
+          </div>
+        )}
+
+        {!selectedMsg && !error && (
+          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+            Select a message to view its trace
+          </div>
+        )}
+
+        {loadingLogs && (
+          <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+            <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+            Loading trace...
+          </div>
+        )}
+
+        {selectedMsg && !loadingLogs && (
+          <div className="p-4">
+            {logs.length === 0 ? (
+              <div className="text-sm text-muted-foreground text-center py-12">
+                No structured log events for this message
+              </div>
+            ) : (
+              <WaterfallTrace logs={logs} message={selectedMsg} />
+            )}
           </div>
         )}
       </div>

@@ -8,7 +8,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
 
 from app.llm import stream_llm
-from app.logging import get_logger
+from app.logging import get_logger, structured_log
 from app.schemas import GraphState
 from app.tools import ALL_TOOLS
 
@@ -25,6 +25,18 @@ def tool_executor(state: GraphState) -> dict:
     last_msg = state["messages"][-1]
     result = ToolNode(ALL_TOOLS).invoke({"messages": [last_msg]})
     tpc = state.get("pending_tool_calls", 0)
+
+    tool_msgs = result.get("messages", [])
+    for msg in tool_msgs:
+        structured_log(
+            "tool_result",
+            content=str(msg.content)[:1000],
+            tool_name=getattr(msg, "name", None),
+            tool_call_id=getattr(msg, "tool_call_id", None),
+        )
+        if hasattr(msg, "artifact") and msg.artifact:
+            structured_log("tool_artifact", artifact=str(msg.artifact)[:1000])
+
     return {"messages": result.get("messages", []), "pending_tool_calls": max(0, tpc - 1)}
 
 
@@ -46,6 +58,12 @@ async def _node_with_prompt(
 
 async def agent(state: GraphState, config: RunnableConfig | None = None) -> AsyncGenerator[dict, None]:
     log.info("Agent node invoked")
+    structured_log(
+        "agent_start",
+        message_count=len(state["messages"]),
+        last_role=getattr(state["messages"][-1], "type", None) if state["messages"] else None,
+        pending_tool_calls=state.get("pending_tool_calls", 0),
+    )
     pending = 0
     async for update in _node_with_prompt(state, AGENT_SYSTEM_PROMPT, bind_tools=ALL_TOOLS, config=config):
         chunk = update.get("messages", [None])[0]
@@ -53,6 +71,12 @@ async def agent(state: GraphState, config: RunnableConfig | None = None) -> Asyn
             for tcc in chunk.tool_call_chunks:
                 if tcc.get("name"):
                     pending = 1
+                    structured_log(
+                        "agent_tool_call",
+                        tool_name=tcc.get("name"),
+                        tool_args=tcc.get("args"),
+                        tool_call_id=tcc.get("id"),
+                    )
                     break
         update["pending_tool_calls"] = pending
         yield update
@@ -63,7 +87,9 @@ async def agent(state: GraphState, config: RunnableConfig | None = None) -> Asyn
 
 def route_after_agent(state: GraphState) -> Literal["tool_executor", "end"]:
     if state.get("pending_tool_calls", 0) > 0:
+        structured_log("graph_route", destination="tool_executor", pending_calls=state["pending_tool_calls"])
         return "tool_executor"
+    structured_log("graph_route", destination="end", pending_calls=0)
     return "end"
 
 

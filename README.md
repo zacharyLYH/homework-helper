@@ -366,6 +366,7 @@ Set in `backend/.env` (copied from `.env.example` by setup.sh):
 | `ENVIRONMENT` | no | `dev` | Set to `prod` to disable debug endpoints and enable secure cookie |
 | `DATABASE_PATH` | no | `data/homework_helper.db` | SQLite file path |
 | `BACKEND_URL` | no | `http://127.0.0.1:8000` | Frontend→backend URL (set in Docker) |
+| `STRUCTURED_LOGGING_PCT` | yes | - | The percentage of requests that get structured logging |
 
 8. Local testing
 

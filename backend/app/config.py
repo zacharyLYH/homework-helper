@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     ]
 
     jwt_secret_key: str = ""
+    structured_logging_pct: int = 50
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
     smtp_user: str = ""

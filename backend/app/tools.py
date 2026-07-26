@@ -4,6 +4,7 @@ import operator
 import httpx
 from langchain_core.tools import tool
 
+from app.logging import structured_log
 from app.schemas import RouteCategory
 
 
@@ -42,31 +43,41 @@ def _safe_eval(node):
 @tool
 def calculator(expression: str) -> str:
     """Evaluate a math expression. Supports +, -, *, /, //, %, ** and parentheses."""
+    structured_log("tool_input", tool="calculator", expression=expression)
     try:
         tree = ast.parse(expression.strip(), mode="eval")
         result = _safe_eval(tree)
+        structured_log("tool_output", tool="calculator", result=result)
         return str(result)
     except Exception as e:
+        structured_log("tool_output", tool="calculator", error=str(e))
         return f"Error: {e}"
 
 
 @tool
 def word_count(text: str) -> str:
     """Count the number of words in a piece of text."""
-    return str(len(text.split()))
+    structured_log("tool_input", tool="word_count", text_length=len(text))
+    result = str(len(text.split()))
+    structured_log("tool_output", tool="word_count", count=len(text.split()))
+    return result
 
 
 @tool
 def text_stats(text: str) -> str:
     """Get word count, character count, and approximate sentence count."""
+    structured_log("tool_input", tool="text_stats", text_length=len(text))
     words = text.split()
     sentences = max(1, text.count(".") + text.count("!") + text.count("?"))
-    return f"Words: {len(words)}, Characters: {len(text)}, Sentences: ~{sentences}"
+    result = f"Words: {len(words)}, Characters: {len(text)}, Sentences: ~{sentences}"
+    structured_log("tool_output", tool="text_stats", word_count=len(words), char_count=len(text), sentence_count=sentences)
+    return result
 
 
 @tool
 def web_search(query: str) -> str:
     """Search the web using DuckDuckGo. Call this tool ANY TIME the user asks about current events, news, recent developments, specific people/places/things, or any factual topic you're not fully confident about. Always search before guessing or making up information."""
+    structured_log("tool_input", tool="web_search", query=query)
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (compatible; SearchBot/1.0)",
@@ -128,16 +139,22 @@ def web_search(query: str) -> str:
             if not parts:
                 return f"No results found for '{query}'."
 
-            return "\n".join(parts[:20]).strip()
+            result = "\n".join(parts[:20]).strip()
+            structured_log("tool_output", tool="web_search", query=query, result_length=len(result), num_results=len(parts))
+            return result
     except httpx.HTTPError as e:
+        structured_log("tool_output", tool="web_search", error=str(e))
         return f"Web search error: {e}"
     except Exception as e:
+        structured_log("tool_output", tool="web_search", error=str(e))
         return f"Web search error: {e}"
 
 
 @tool
 def route(category: RouteCategory) -> str:
     """Classify the user message into a category. Call this to route the conversation."""
+    structured_log("tool_input", tool="route", category=category.value)
+    structured_log("tool_output", tool="route", result=category.value)
     return category.value
 
 

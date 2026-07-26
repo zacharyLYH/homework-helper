@@ -1,4 +1,3 @@
-import json
 from collections.abc import AsyncGenerator
 
 from langchain_core.messages import AIMessageChunk
@@ -8,7 +7,7 @@ from openai import RateLimitError
 from pydantic import SecretStr
 
 from app.config import settings
-from app.logging import get_logger
+from app.logging import get_logger, structured_log
 
 log = get_logger(__name__)
 
@@ -44,36 +43,56 @@ async def stream_llm(
         llm = _make_llm(model)
         bound = llm.bind_tools(bind_tools) if bind_tools else llm
 
-        # --- AUDIT: log the full request/response as JSON ---
-        audit = get_logger("llm_audit")
         msg_list = []
         for msg in messages:
             entry = {"role": getattr(msg, "type", type(msg).__name__)}
             content = msg.content
             if isinstance(content, list):
-                entry["content"] = str(content)[:500]
+                entry["content"] = str(content)[:1000]
             else:
-                entry["content"] = (str(content)[:500] + "...") if len(str(content)) > 500 else str(content)
+                entry["content"] = str(content)[:1000]
             msg_list.append(entry)
-        req_json = json.dumps({
-            "model": model,
-            "messages": msg_list,
-            "tools": [t.name if hasattr(t, "name") else str(t) for t in bind_tools] if bind_tools else None,
-        }, ensure_ascii=False)
-        audit.info(">>> LLM REQUEST: %s", req_json)
+
+        structured_log(
+            "llm_request",
+            model=model,
+            messages=msg_list,
+            tools=[t.name for t in bind_tools] if bind_tools else None,
+            tool_count=len(bind_tools) if bind_tools else 0,
+            message_count=len(msg_list),
+        )
 
         try:
             log.debug("Streaming model %s", model)
+            structured_log("llm_stream_start", model=model)
             async for chunk in bound.astream(messages, config=config):
                 if isinstance(chunk, AIMessageChunk):
                     if chunk.tool_call_chunks:
                         for tcc in chunk.tool_call_chunks:
-                            audit.info(">>> LLM TOOL CALL: %s", json.dumps(tcc, ensure_ascii=False))
+                            structured_log(
+                                "llm_tool_call",
+                                tool_name=tcc.get("name"),
+                                tool_args=tcc.get("args"),
+                                tool_call_id=tcc.get("id"),
+                                model=model,
+                            )
                     yield chunk, model
+            structured_log("llm_stream_end", model=model)
             return
         except RateLimitError as e:
             log.warning("Model %s quota exceeded, trying next model", model)
+            structured_log(
+                "llm_quota_error",
+                model=model,
+                error=str(e)[:500],
+                remaining_models=[m for m in _chat_models() if m != model],
+            )
             last_err = e
+    structured_log(
+        "llm_all_models_exhausted",
+        models_attempted=_chat_models(),
+        error=str(last_err)[:500],
+    )
     raise last_err
 
 

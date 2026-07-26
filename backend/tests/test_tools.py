@@ -94,7 +94,23 @@ async def test_tool_call_calculator_flow(client, chat):
     assert len(done_events) == 1
     assert done_events[0]["model"] == "gpt-4"
 
-    # --- 4. DB metadata includes tools_used ---
+    # --- 4. structured logs created ---
+    with get_conn() as conn:
+        log_rows = conn.execute(
+            "SELECT type, message_id, log FROM structured_logs ORDER BY created_at ASC"
+        ).fetchall()
+        assert len(log_rows) > 0, "Expected structured logs to be created"
+        log_types = [r["type"] for r in log_rows]
+        assert "chat_request" in log_types
+        assert "llm_request" in log_types
+        assert "agent_start" in log_types
+        assert "chat_response" in log_types
+        # message_id should be set on the last log entries (chat_response)
+        chat_response_logs = [r for r in log_rows if r["type"] == "chat_response"]
+        assert len(chat_response_logs) > 0
+        assert chat_response_logs[0]["message_id"] is not None
+
+    # --- 5. DB metadata includes tools_used ---
     with get_conn() as conn:
         msgs = conn.execute(
             "SELECT role, content, metadata_json FROM messages WHERE chat_id = ? ORDER BY created_at",
@@ -139,6 +155,20 @@ async def test_tool_call_no_tool_needed(client, chat):
     token_events = [e for e in events if e["type"] == "token"]
     full = "".join(e["content"] for e in token_events)
     assert full == "Hello world!"
+
+    # --- structured logs created (no tool flow) ---
+    with get_conn() as conn:
+        log_rows = conn.execute(
+            "SELECT type, message_id FROM structured_logs ORDER BY created_at ASC"
+        ).fetchall()
+        assert len(log_rows) > 0
+        log_types = [r["type"] for r in log_rows]
+        assert "chat_request" in log_types
+        assert "agent_start" in log_types
+        assert "llm_stream_start" in log_types
+        assert "chat_response" in log_types
+        # No tool_call events since no tools were needed
+        assert "tool_call" not in log_types
 
     # --- DB has no tools_used in metadata ---
     with get_conn() as conn:

@@ -126,6 +126,15 @@ def init_db():
                 expires_at TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
+
+            CREATE TABLE IF NOT EXISTS structured_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                message_id INTEGER,
+                log TEXT NOT NULL,
+                _req_id TEXT NOT NULL
+            );
         """)
     log.info("Database initialized")
 
@@ -263,6 +272,16 @@ def update_chat_title(chat_id: int, title: str) -> Optional[Chat]:
         return _row_to_chat(row) if row else None
 
 
+def list_messages_with_logs() -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT DISTINCT m.* FROM messages m
+            INNER JOIN structured_logs sl ON sl.message_id = m.id
+            ORDER BY m.created_at DESC
+        """).fetchall()
+        return [_row_to_message(r).model_dump() for r in rows]
+
+
 def update_chat_token_usage(chat_id: int, input_tokens: int, output_tokens: int, total_tokens: int) -> None:
     with get_conn() as conn:
         now = datetime.now(timezone.utc).isoformat()
@@ -298,3 +317,39 @@ def list_subjects_with_chat_metadata(user_id: int) -> list[SubjectWithChats]:
             )
             for s in subjects
         ]
+
+
+# --- Structured log operations ---
+
+
+def insert_structured_log(type: str, created_at: str, message_id: int | None, log: str, req_id: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO structured_logs (type, created_at, message_id, log, _req_id) VALUES (?, ?, ?, ?, ?)",
+            (type, created_at, message_id, log, req_id),
+        )
+
+
+def update_structured_log_message_id(req_id: str, message_id: int) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE structured_logs SET message_id = ? WHERE _req_id = ? AND message_id IS NULL",
+            (message_id, req_id),
+        )
+
+
+def list_structured_logs() -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, type, created_at, message_id, log FROM structured_logs ORDER BY created_at ASC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def list_structured_logs_for_message(message_id: int) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, type, created_at, message_id, log FROM structured_logs WHERE message_id = ? ORDER BY created_at ASC",
+            (message_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]

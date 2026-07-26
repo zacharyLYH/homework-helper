@@ -9,11 +9,13 @@ from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from langchain_core.runnables import RunnableConfig
 
 from app.auth import get_current_user
+from app.config import settings
 from app.db import get_chat, get_messages, save_message, update_chat_title, update_chat_token_usage
 from app.graph import compiled_graph
 from app.llm import title_llm
-from app.logging import get_logger
+from app.logging import get_logger, structured_log
 from app.schemas import ChatRequest, User
+from app.structured_log import init_structured_logger
 
 log = get_logger(__name__)
 router = APIRouter()
@@ -52,13 +54,17 @@ def _save_assistant_message(chat_id: int | None, full_reply: str, model_used: st
     metadata = {"model": model_used, "usage": total_usage}
     if tools_used:
         metadata["tools_used"] = tools_used
-    save_message(
+    msg = save_message(
         chat_id=chat_id or 0,
         role="assistant",
         content=full_reply or "No response generated.",
         metadata_json=json.dumps(metadata),
         token_count=total_usage["total_tokens"],
     )
+    from app.structured_log import get_structured_logger
+    logger = get_structured_logger()
+    if logger is not None:
+        logger.set_message_id(msg.id)
     if chat_id and total_usage["total_tokens"] > 0:
         update_chat_token_usage(
             chat_id,
@@ -104,12 +110,24 @@ async def _maybe_generate_title(chat_id: int | None) -> AsyncGenerator[str, None
 @router.post("/api/chat/stream")
 async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
     thread_id = str(uuid.uuid4())
+
+    sl = init_structured_logger(settings.structured_logging_pct)
+    if sl:
+        log.info("Structured logging ACTIVE for request: %s", thread_id)
+        structured_log("chat_request", message_length=len(req.message), chat_id=req.chat_id, thread_id=thread_id)
+    else:
+        log.info("Structured logging SKIPPED for request: %s", thread_id)
+
     log.info("Chat stream request: thread_id=%s, chat_id=%s, message_length=%d", thread_id, req.chat_id, len(req.message))
 
     _save_user_message(req)
 
     lc_messages = _build_lc_messages(req)
-    initial_state = {"messages": lc_messages, "model": "unknown", "pending_tool_calls": 0}
+    initial_state = {
+        "messages": lc_messages,
+        "model": "unknown",
+        "pending_tool_calls": 0,
+    }
     config = RunnableConfig(configurable={"thread_id": thread_id})
 
     async def event_generator():
@@ -179,6 +197,7 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
                                 total_usage["total_tokens"] = usage.get("total_tokens", 0)
             except Exception as e:
                 log.error("Stream execution failed: %s", e, exc_info=True)
+                structured_log("stream_error", error=str(e))
             finally:
                 await queue.put(None)
 
@@ -190,12 +209,10 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
         graph_task = asyncio.create_task(_stream_graph())
         title_task = asyncio.create_task(_stream_title())
 
-        # Title finishes fast — wait, yield its events first
         await title_task
         for event in title_events:
             yield event
 
-        # Then stream graph tokens from the queue (may still be filling in real-time)
         while True:
             item = await queue.get()
             if item is None:
@@ -204,6 +221,7 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
 
         await graph_task
         _save_assistant_message(req.chat_id, full_reply, model_used, total_usage, tools_used=tools_used if tools_used else None)
+        structured_log("chat_response", model=model_used, usage=total_usage, tools_used=tools_used)
         yield f"data: {json.dumps({'type': 'done', 'thread_id': thread_id, 'model': model_used, 'usage': total_usage})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

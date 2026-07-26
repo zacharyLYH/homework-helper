@@ -1,6 +1,8 @@
 import logging
 import os
 
+from app.structured_log import structured_log  # noqa: F401
+
 _level = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
     level=getattr(logging, _level, logging.INFO),
