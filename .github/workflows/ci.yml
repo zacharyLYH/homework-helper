@@ -40,9 +40,12 @@ jobs:
         working-directory: backend
         run: uv sync --frozen
 
+      - name: Install pyright
+        run: npm install -g pyright
+
       - name: Pyright (backend)
         working-directory: backend
-        run: uv run pyright app/
+        run: pyright app/
 
   build-frontend:
     name: Build Frontend
