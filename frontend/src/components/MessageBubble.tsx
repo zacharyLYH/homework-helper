@@ -14,7 +14,6 @@ import type { ChatMessage } from "@/lib/api";
 
 function CodeBlock({ className, children, ...props }: React.ComponentPropsWithoutRef<"code">) {
   const [copied, setCopied] = useState(false);
-  const isInline = !className;
   const code = String(children).replace(/\n$/, "");
 
   const handleCopy = () => {
@@ -22,10 +21,6 @@ function CodeBlock({ className, children, ...props }: React.ComponentPropsWithou
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
-
-  if (isInline) {
-    return <code className="rounded bg-muted px-1.5 py-0.5 text-sm font-mono" {...props}>{children}</code>;
-  }
 
   return (
     <div className="relative group">
@@ -90,7 +85,7 @@ export default function MessageBubble({ msg, isStreaming, isLast, onRetry }: { m
                     },
                   }}
                 >
-                  {msg.content}
+                  {msg.content.replace(/\\n/g, "\n")}
                 </ReactMarkdown>
               </div>
             )}
