@@ -31,16 +31,24 @@ export default function ChatMessages({ selectedChatId, messages, streaming, tool
                   <MessageScrollerItem key={msg.id ?? i} messageId={String(msg.id ?? i)} scrollAnchor={msg.role === "user"}>
                     <div className="animate-fade-in">
                       <MessageBubble msg={msg} isStreaming={streaming} isLast={i === messages.length - 1} onRetry={onRetry ? () => onRetry(i) : undefined} />
-                      {toolCalls.length > 0 && i === messages.length - 2 && msg.role === "user" && (
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {toolCalls.map((tc) => (
-                            <div key={tc.id} className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/50 rounded-full px-3 py-1">
-                              <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
-                              {tc.name === "web_search" ? `Searching for "${tc.args.query}"` : `Using ${tc.name}...`}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      {(() => {
+                        const showStreaming = toolCalls.length > 0 && i === messages.length - 2 && msg.role === "user";
+                        const chips = showStreaming ? toolCalls : (msg.toolCalls ?? []);
+                        if (chips.length === 0) return null;
+                        return (
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {chips.map((tc, idx) => (
+                              <div key={tc.id ?? idx} className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/50 rounded-full px-3 py-1">
+                                <span className={`h-2 w-2 rounded-full bg-blue-500 ${showStreaming ? "animate-pulse" : ""}`} />
+                                {showStreaming
+                                  ? (tc.name === "web_search" ? `Searching for "${tc.args.query}"` : `Using ${tc.name}...`)
+                                  : (tc.name === "web_search" ? `Searched for "${tc.args.query}"` : `Used ${tc.name}`)
+                                }
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </MessageScrollerItem>
                 ))}

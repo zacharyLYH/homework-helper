@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { sendChatStream, getSubjects, getChats, getMessages, type ChatMessage, type TokenUsage, getUsageFromMetadata, type ChatSummary, type ToolCallInfo } from "@/lib/api";
+import { sendChatStream, getSubjects, getChats, getMessages, type ChatMessage, type TokenUsage, getUsageFromMetadata, getToolCallsFromMetadata, type ChatSummary, type ToolCallInfo } from "@/lib/api";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import ChatHeader from "@/components/ChatHeader";
@@ -18,6 +18,7 @@ export default function ChatPage() {
   const [currentMessageUsage, setCurrentMessageUsage] = useState<TokenUsage | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [toolCalls, setToolCalls] = useState<ToolCallInfo[]>([]);
+  const toolCallsRef = useRef<ToolCallInfo[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -54,6 +55,7 @@ export default function ChatPage() {
         imageMediaType: m.image_media_type || undefined,
         usage: getUsageFromMetadata(m.metadata_json),
         tokenCount: m.token_count || undefined,
+        toolCalls: getToolCallsFromMetadata(m.metadata_json),
       }));
       setMessages(formatted);
     } catch (e) {
@@ -102,12 +104,24 @@ export default function ChatPage() {
   }, []);
 
   const onDone = useCallback((usage: TokenUsage | undefined) => {
+    const finalToolCalls = toolCallsRef.current;
+    toolCallsRef.current = [];
     if (usage) {
       setCurrentMessageUsage(usage);
       setChatsBySubject((prev) => {
         const sid = Object.keys(prev).find((k) => prev[Number(k)]?.some((c) => c.id === selectedChatId));
         if (!sid) return prev;
         return { ...prev, [Number(sid)]: prev[Number(sid)].map((c) => (c.id === selectedChatId ? { ...c, total_tokens: c.total_tokens + usage.total_tokens } : c)) };
+      });
+    }
+    if (finalToolCalls.length > 0) {
+      setMessages((prev) => {
+        const updated = [...prev];
+        const last = updated[updated.length - 1];
+        if (last && last.role === "assistant") {
+          updated[updated.length - 1] = { ...last, toolCalls: finalToolCalls };
+        }
+        return updated;
       });
     }
     setStreaming(false);
@@ -130,10 +144,12 @@ export default function ChatPage() {
       return updated;
     });
     setStreaming(false);
+    toolCallsRef.current = [];
     setToolCalls([]);
   }, []);
 
   const onToolCall = useCallback((toolCall: ToolCallInfo) => {
+    toolCallsRef.current = [...toolCallsRef.current, toolCall];
     setToolCalls((prev) => [...prev, toolCall]);
   }, []);
 
@@ -141,6 +157,7 @@ export default function ChatPage() {
     if (streaming || !selectedChatId) return;
 
     setCurrentMessageUsage(null);
+    toolCallsRef.current = [];
     setToolCalls([]);
     setMessages([...contextMessages, { role: "assistant", content: "" } as ChatMessage]);
     setStreaming(true);

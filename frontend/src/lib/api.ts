@@ -61,6 +61,7 @@ export interface ChatMessage {
   imageName?: string;
   usage?: TokenUsage;
   tokenCount?: number;
+  toolCalls?: ToolCallInfo[];
 }
 
 export interface ToolCallInfo {
@@ -191,6 +192,16 @@ export interface Message {
   chat_mode?: string;
   subject_name?: string;
   user_email?: string;
+}
+
+export function getToolCallsFromMetadata(metadata_json?: string): ToolCallInfo[] | undefined {
+  if (!metadata_json) return undefined;
+  try {
+    const metadata = JSON.parse(metadata_json);
+    return metadata.tool_calls;
+  } catch {
+    return undefined;
+  }
 }
 
 export function getUsageFromMetadata(metadata_json?: string): TokenUsage | undefined {

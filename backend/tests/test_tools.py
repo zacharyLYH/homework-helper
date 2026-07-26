@@ -129,9 +129,11 @@ async def test_tool_call_calculator_flow(client, chat):
     assert msgs[1]["content"] == "The answer is 4."
 
     meta = json.loads(msgs[1]["metadata_json"])
-    assert "tools_used" in meta, f"metadata missing tools_used: {meta}"
-    assert meta["tools_used"] == ["calculator"]
     assert meta["model"] == "gpt-4"
+    assert "tool_calls" in meta, f"metadata missing tool_calls: {meta}"
+    assert meta["tool_calls"] == [{"name": "calculator", "args": {"expression": "2+2"}, "id": "call_mock_tc_001"}], (
+        f"Unexpected tool_calls in metadata: {meta['tool_calls']}"
+    )
 
 
 async def test_tool_call_no_tool_needed(client, chat):
@@ -185,7 +187,7 @@ async def test_tool_call_no_tool_needed(client, chat):
 
     assert len(msgs) == 2
     meta = json.loads(msgs[1]["metadata_json"])
-    assert "tools_used" not in meta, f"metadata should not contain tools_used: {meta}"
+    assert "tool_calls" not in meta, f"metadata should not contain tool_calls: {meta}"
     assert msgs[1]["content"] == "Hello world!"
 
 
@@ -324,5 +326,10 @@ async def test_duplicate_tool_call_prevention(client, chat):
     assert len(msgs) == 2, f"Expected 2 messages, got {len(msgs)}"
     assert msgs[1]["role"] == "assistant"
     meta = json.loads(msgs[1]["metadata_json"])
-    assert "tools_used" in meta
-    assert "calculator" in meta["tools_used"]
+    assert "tool_calls" in meta, f"metadata missing tool_calls: {meta}"
+    assert len(meta["tool_calls"]) == 2, (
+        f"Expected 2 tool_calls entries (both LLM calls recorded), got {len(meta['tool_calls'])}"
+    )
+    for tc in meta["tool_calls"]:
+        assert tc["name"] == "calculator"
+        assert tc["args"] == {"expression": "2+2"}

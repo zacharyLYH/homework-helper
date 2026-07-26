@@ -79,13 +79,13 @@ INSERT INTO chats (subject_id, user_id, mode, title, input_tokens, output_tokens
 
 INSERT INTO messages (chat_id, role, content, metadata_json, token_count) VALUES
 (1, 'user', 'What is the chain rule?', NULL, 0),
-(1, 'assistant', 'The chain rule: d/dx[f(g(x))] = f''(g(x)) * g''(x).', '{"node":"math","token_usage":{"input_tokens":50,"output_tokens":60,"total_tokens":110}}', 110),
+(1, 'assistant', 'The chain rule: d/dx[f(g(x))] = f''(g(x)) * g''(x).', '{"node":"math","tool_calls":[{"name":"web_search","args":{"query":"chain rule formula"},"id":"seed_call_1"},{"name":"calculator","args":{"expression":"d/dx sin(x^2)"},"id":"seed_call_2"}],"token_usage":{"input_tokens":50,"output_tokens":60,"total_tokens":110}}', 110),
 (1, 'user', 'Can you give me an example?', NULL, 0),
-(1, 'assistant', 'If y = sin(x²), then dy/dx = cos(x²) * 2x.', '{"node":"math","token_usage":{"input_tokens":80,"output_tokens":45,"total_tokens":125}}', 125),
+(1, 'assistant', 'If y = sin(x²), then dy/dx = cos(x²) * 2x.', '{"node":"math","tool_calls":[{"name":"calculator","args":{"expression":"d/dx sin(x^2)"},"id":"seed_call_3"}],"token_usage":{"input_tokens":80,"output_tokens":45,"total_tokens":125}}', 125),
 (2, 'user', 'Evaluate integral of x*e^x', NULL, 0),
-(2, 'assistant', '∫x*e^x dx = e^x(x-1) + C', '{"node":"math","tool_calls":[{"name":"calculator","args":{"expression":"1"}}],"token_usage":{"input_tokens":60,"output_tokens":70,"total_tokens":130}}', 130),
+(2, 'assistant', '∫x*e^x dx = e^x(x-1) + C', '{"node":"math","tool_calls":[{"name":"calculator","args":{"expression":"integral x*e^x"},"id":"seed_call_4"}],"token_usage":{"input_tokens":60,"output_tokens":70,"total_tokens":130}}', 130),
 (3, 'user', 'Car accelerates from rest at 2m/s². Position at t=5s?', NULL, 0),
-(3, 'assistant', 'x = ½at² = ½ * 2 * 25 = 25 meters', '{"node":"math","tool_calls":[{"name":"calculator","args":{"expression":"0.5 * 2 * 25"}}],"token_usage":{"input_tokens":55,"output_tokens":50,"total_tokens":105}}', 105),
+(3, 'assistant', 'x = ½at² = ½ * 2 * 25 = 25 meters', '{"node":"math","tool_calls":[{"name":"calculator","args":{"expression":"0.5 * 2 * 25"},"id":"seed_call_5"}],"token_usage":{"input_tokens":55,"output_tokens":50,"total_tokens":105}}', 105),
 (4, 'user', 'Difference between SN1 and SN2?', NULL, 0),
 (4, 'assistant', 'SN1: two-step, carbocation, racemization, tertiary. SN2: one-step, backside attack, inversion, primary.', '{"node":"general","token_usage":{"input_tokens":45,"output_tokens":65,"total_tokens":110}}', 110);
 
