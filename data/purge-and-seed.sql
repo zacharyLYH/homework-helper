@@ -91,17 +91,61 @@ INSERT INTO messages (chat_id, role, content, metadata_json, token_count) VALUES
 
 INSERT INTO subjects (user_id, name) VALUES (3, 'AP Biology');
 INSERT INTO subjects (user_id, name) VALUES (3, 'US History');
+INSERT INTO subjects (user_id, name) VALUES (3, 'AP Calculus AB');
+INSERT INTO subjects (user_id, name) VALUES (3, 'Computer Science');
 
-INSERT INTO chats (subject_id, user_id, mode, title, input_tokens, output_tokens, total_tokens) VALUES (4, 3, 'guide', 'Cell division', 70, 80, 150);
+INSERT INTO chats (subject_id, user_id, mode, title, input_tokens, output_tokens, total_tokens) VALUES (4, 3, 'guide', 'Cell division', 210, 280, 490);
 INSERT INTO chats (subject_id, user_id, mode, title, input_tokens, output_tokens, total_tokens) VALUES (4, 3, 'just-solve', 'Meiosis vs Mitosis', 60, 90, 150);
-INSERT INTO chats (subject_id, user_id, mode, title, input_tokens, output_tokens, total_tokens) VALUES (5, 3, 'guide', 'Civil War causes', 120, 160, 280);
+INSERT INTO chats (subject_id, user_id, mode, title, input_tokens, output_tokens, total_tokens) VALUES (5, 3, 'guide', 'Civil War causes', 180, 260, 440);
+INSERT INTO chats (subject_id, user_id, mode, title, input_tokens, output_tokens, total_tokens) VALUES (5, 3, 'just-solve', 'Reconstruction', 90, 130, 220);
+INSERT INTO chats (subject_id, user_id, mode, title, input_tokens, output_tokens, total_tokens) VALUES (6, 3, 'guide', 'Limits & continuity', 130, 190, 320);
+INSERT INTO chats (subject_id, user_id, mode, title, input_tokens, output_tokens, total_tokens) VALUES (6, 3, 'just-solve', 'Derivative practice', 100, 140, 240);
+INSERT INTO chats (subject_id, user_id, mode, title, input_tokens, output_tokens, total_tokens) VALUES (7, 3, 'guide', 'Binary trees', 160, 230, 390);
+INSERT INTO chats (subject_id, user_id, mode, title, input_tokens, output_tokens, total_tokens) VALUES (7, 3, 'just-solve', 'Sorting algorithms', 90, 120, 210);
 
 INSERT INTO messages (chat_id, role, content, metadata_json, token_count) VALUES
+-- Chat 5: Cell division (AP Biology, guide)
 (5, 'user', 'Explain the stages of mitosis', NULL, 0),
-(5, 'assistant', 'Mitosis: Prophase, Metaphase, Anaphase, Telophase. Chromosomes condense, align, separate, and reform nuclei.', '{"node":"biology","token_usage":{"input_tokens":70,"output_tokens":80,"total_tokens":150}}', 150),
+(5, 'assistant', 'Mitosis has **4 main stages**:\n\n1. **Prophase** — Chromosomes condense, nuclear envelope breaks down.\n2. **Metaphase** — Chromosomes align at the metaphase plate.\n3. **Anaphase** — Sister chromatids separate and move to opposite poles.\n4. **Telophase** — Nuclear membranes reform, chromosomes decondense.\n\n$$\\text{Mitosis} = \\text{Prophase} + \\text{Metaphase} + \\text{Anaphase} + \\text{Telophase}$$', '{"node":"biology","tool_calls":[{"name":"web_search","args":{"query":"mitosis stages diagram"},"id":"seed_mitosis_1"}],"token_usage":{"input_tokens":70,"output_tokens":100,"total_tokens":170}}', 170),
+(5, 'user', 'How long does each stage take?', NULL, 0),
+(5, 'assistant', 'Typical durations in mammalian cells:\n\n| Stage | Duration |\n|-------|----------|\n| Prophase | ~30-60 min |\n| Metaphase | ~20-30 min |\n| Anaphase | ~5-10 min |\n| Telophase | ~20-30 min |\n\n> Anaphase is the shortest — chromatids move fast at ~1 μm/min.', '{"node":"biology","tool_calls":[{"name":"web_search","args":{"query":"mitosis stage durations mammalian cells"},"id":"seed_mitosis_2"}],"token_usage":{"input_tokens":60,"output_tokens":80,"total_tokens":140}}', 140),
+
+-- Chat 6: Meiosis vs Mitosis (AP Biology, just-solve)
 (6, 'user', 'Difference between meiosis and mitosis?', NULL, 0),
-(6, 'assistant', 'Mitosis: 1 division, 2 diploid cells, identical. Meiosis: 2 divisions, 4 haploid cells, genetic variation via crossing over.', '{"node":"biology","token_usage":{"input_tokens":60,"output_tokens":90,"total_tokens":150}}', 150),
+(6, 'assistant', '| Feature | Mitosis | Meiosis |\n|---------|---------|---------|\n| Divisions | 1 | 2 |\n| Daughter cells | 2 diploid | 4 haploid |\n| Genetic variation | None (identical) | Crossing over & independent assortment |\n| Purpose | Growth, repair | Gamete production |', '{"node":"biology","token_usage":{"input_tokens":60,"output_tokens":90,"total_tokens":150}}', 150),
+
+-- Chat 7: Civil War causes (US History, guide)
 (7, 'user', 'What caused the Civil War?', NULL, 0),
-(7, 'assistant', 'Primary causes: slavery expansion, states rights disputes, economic differences between industrial North and agricultural South.', '{"node":"history","token_usage":{"input_tokens":55,"output_tokens":85,"total_tokens":140}}', 140),
+(7, 'assistant', 'Historians identify **4 primary causes**:\n\n1. **Slavery** — Moral and economic divide between North and South\n2. **States'' Rights** — Southern belief in nullification and secession\n3. **Economic differences** — Industrial North vs. agrarian South\n4. **Political breakdown** — Failure of compromises (Missouri Compromise, Compromise of 1850, Kansas-Nebraska Act)\n\n$$\\text{Secession} \\to \\text{Fort Sumter} \\to \\text{Civil War}$$', '{"node":"history","tool_calls":[{"name":"web_search","args":{"query":"primary causes of US Civil War historiography"},"id":"seed_civilwar_1"}],"token_usage":{"input_tokens":55,"output_tokens":105,"total_tokens":160}}', 160),
 (7, 'user', 'What was the Emancipation Proclamation?', NULL, 0),
-(7, 'assistant', 'Issued by Lincoln in 1863, it declared slaves in Confederate states free. It changed the war focus to include ending slavery.', '{"node":"history","token_usage":{"input_tokens":65,"output_tokens":75,"total_tokens":140}}', 140);
+(7, 'assistant', 'Issued by **Lincoln** on **January 1, 1863**, it declared slaves in Confederate states **free**.\n\nKey points:\n- Only applied to states *in rebellion* (not border states)\n- Changed the war goal from *preserving the Union* to *ending slavery*\n- Paved the way for the **13th Amendment**\n\n> "All persons held as slaves ... shall be then, thenceforward, and forever free."', '{"node":"history","tool_calls":[{"name":"web_search","args":{"query":"Emancipation Proclamation text and impact"},"id":"seed_civilwar_2"}],"token_usage":{"input_tokens":65,"output_tokens":95,"total_tokens":160}}', 160),
+(7, 'user', 'What role did economics play?', NULL, 0),
+(7, 'assistant', 'The North and South had **divergent economies**:\n\n- **North**: Manufacturing, railroads, wage labor — wanted tariffs to protect industry\n- **South**: Cash-crop agriculture (cotton, tobacco) — relied on slavery and free trade\n\n$$\\text{Tariff of Abominations (1828)} \\to \\text{Nullification Crisis} \\to \\text{Sectional tension}$$', '{"node":"history","token_usage":{"input_tokens":60,"output_tokens":70,"total_tokens":130}}', 130),
+
+-- Chat 8: Reconstruction (US History, just-solve)
+(8, 'user', 'Summarize the Reconstruction era', NULL, 0),
+(8, 'assistant', '**Reconstruction (1865–1877)** — the period after the Civil War when the US reintegrated Southern states and defined freedmen''s rights.\n\nKey developments:\n- **13th Amendment** — abolished slavery\n- **14th Amendment** — citizenship & equal protection\n- **15th Amendment** — Black male suffrage\n- **Freedmen''s Bureau** — education, labor, healthcare\n- **Black Codes & Jim Crow** — systematic discrimination\n\nReconstruction ended with the **Compromise of 1877**, withdrawing federal troops from the South.', '{"node":"history","tool_calls":[{"name":"web_search","args":{"query":"Reconstruction era summary key events"},"id":"seed_recon_1"}],"token_usage":{"input_tokens":50,"output_tokens":130,"total_tokens":180}}', 180),
+(8, 'user', 'What was the Freedmen''s Bureau?', NULL, 0),
+(8, 'assistant', 'The **Freedmen''s Bureau** (1865–1872) was a federal agency that:\n\n- Established **~1,000 schools** for formerly enslaved people\n- Provided **food, housing, and medical aid**\n- Helped negotiate **labor contracts**\n- Reunited **families separated by slavery**\n\nIt was one of the first federal social welfare programs in US history.', '{"node":"history","token_usage":{"input_tokens":40,"output_tokens":70,"total_tokens":110}}', 110),
+
+-- Chat 9: Limits & continuity (AP Calculus AB, guide)
+(9, 'user', 'Explain the formal definition of a limit', NULL, 0),
+(9, 'assistant', 'The **epsilon-delta definition**:\n\n$$\\lim_{x \\to a} f(x) = L \\iff \\forall \\varepsilon > 0, \\; \\exists \\delta > 0 \\text{ such that } 0 < |x - a| < \\delta \\implies |f(x) - L| < \\varepsilon$$\n\nIntuitively: you can make $f(x)$ *arbitrarily close* to $L$ by picking $x$ *sufficiently close* to $a$.', '{"node":"math","tool_calls":[{"name":"calculator","args":{"expression":"limit definition"},"id":"seed_limits_1"}],"token_usage":{"input_tokens":60,"output_tokens":90,"total_tokens":150}}', 150),
+(9, 'user', 'Is $f(x) = \\frac{1}{x}$ continuous at $x = 0$?', NULL, 0),
+(9, 'assistant', 'No — $f(x) = \\frac{1}{x}$ is **not continuous** at $x = 0$ because:\n\n$$\\lim_{x \\to 0^-} \\frac{1}{x} = -\\infty \\quad \\text{and} \\quad \\lim_{x \\to 0^+} \\frac{1}{x} = +\\infty$$\n\nThe limit does not exist (infinite discontinuity). For continuity at $a$, we need:\n$$\\lim_{x \\to a} f(x) = f(a)$$\nAnd $f(0)$ is undefined.', '{"node":"math","tool_calls":[{"name":"calculator","args":{"expression":"1/0"},"id":"seed_limits_2"},{"name":"web_search","args":{"query":"infinite discontinuity examples"},"id":"seed_limits_3"}],"token_usage":{"input_tokens":50,"output_tokens":100,"total_tokens":150}}', 150),
+
+-- Chat 10: Derivative practice (AP Calculus AB, just-solve)
+(10, 'user', 'Find the derivative of $f(x) = x^3 \\sin(x)$', NULL, 0),
+(10, 'assistant', 'Use the **product rule**: $\\frac{d}{dx}[u \\cdot v] = u''v + uv''$\n\nLet $u = x^3$, $v = \\sin(x)$:\n\n$$f''(x) = 3x^2 \\cdot \\sin(x) + x^3 \\cdot \\cos(x) = x^2 (3\\sin(x) + x \\cos(x))$$\n\n> Check: at $x = \\pi$, $f''(\\pi) = \\pi^2 (0 + \\pi \\cdot (-1)) = -\\pi^3$', '{"node":"math","tool_calls":[{"name":"calculator","args":{"expression":"derivative of x^3 * sin(x)"},"id":"seed_deriv_1"}],"token_usage":{"input_tokens":40,"output_tokens":100,"total_tokens":140}}', 140),
+(10, 'user', 'Find $\\frac{dy}{dx}$ for $y = \\ln(\\sec(x) + \\tan(x))$', NULL, 0),
+(10, 'assistant', '$$y = \\ln(\\sec x + \\tan x)$$\n\n$$\\frac{dy}{dx} = \\frac{\\sec x \\tan x + \\sec^2 x}{\\sec x + \\tan x} = \\frac{\\sec x (\\tan x + \\sec x)}{\\sec x + \\tan x} = \\sec x$$\n\nSo $\\frac{d}{dx} \\ln(\\sec x + \\tan x) = \\sec x$.', '{"node":"math","tool_calls":[{"name":"calculator","args":{"expression":"derivative of ln(sec(x) + tan(x))"},"id":"seed_deriv_2"}],"token_usage":{"input_tokens":50,"output_tokens":100,"total_tokens":150}}', 150),
+
+-- Chat 11: Binary trees (Computer Science, guide)
+(11, 'user', 'Explain binary search trees', NULL, 0),
+(11, 'assistant', 'A **Binary Search Tree (BST)** is a tree where each node has at most 2 children:\n\n```\n        8\n       / \\\n      3   10\n     / \\    \\\n    1   6    14\n       / \\\n      4   7\n```\n\n**Properties:**\n- Left subtree < node\n- Right subtree > node\n- In-order traversal yields sorted order\n\n**Operations:** `O(h)` where $h = \\text{height}$ (worst $O(n)$, balanced $O(\\log n)$)', '{"node":"cs","tool_calls":[{"name":"web_search","args":{"query":"binary search tree properties and operations"},"id":"seed_bst_1"}],"token_usage":{"input_tokens":60,"output_tokens":110,"total_tokens":170}}', 170),
+(11, 'user', 'Implement a BST in Python', NULL, 0),
+(11, 'assistant', '```python\nclass Node:\n    def __init__(self, val):\n        self.val = val\n        self.left = None\n        self.right = None\n\ndef insert(root, val):\n    if not root:\n        return Node(val)\n    if val < root.val:\n        root.left = insert(root.left, val)\n    else:\n        root.right = insert(root.right, val)\n    return root\n\ndef inorder(root):\n    if root:\n        yield from inorder(root.left)\n        yield root.val\n        yield from inorder(root.right)\n\ndef search(root, val):\n    if not root or root.val == val:\n        return root\n    return search(root.left, val) if val < root.val else search(root.right, val)\n```\n\n**Usage:** `root = insert(None, 8); insert(root, 3); list(inorder(root))  # [3, 8]`', '{"node":"cs","tool_calls":[{"name":"calculator","args":{"expression":"binary search tree insertion complexity"},"id":"seed_bst_2"}],"token_usage":{"input_tokens":70,"output_tokens":120,"total_tokens":190}}', 190),
+
+-- Chat 12: Sorting algorithms (Computer Science, just-solve)
+(12, 'user', 'Compare sorting algorithms', NULL, 0),
+(12, 'assistant', '| Algorithm | Best | Average | Worst | Space | Stable |\n|-----------|------|---------|-------|-------|--------|\n| Bubble | $O(n)$ | $O(n^2)$ | $O(n^2)$ | $O(1)$ | Yes |\n| Selection | $O(n^2)$ | $O(n^2)$ | $O(n^2)$ | $O(1)$ | No |\n| Insertion | $O(n)$ | $O(n^2)$ | $O(n^2)$ | $O(1)$ | Yes |\n| Merge | $O(n \\log n)$ | $O(n \\log n)$ | $O(n \\log n)$ | $O(n)$ | Yes |\n| Quick | $O(n \\log n)$ | $O(n \\log n)$ | $O(n^2)$ | $O(\\log n)$ | No |\n| Heap | $O(n \\log n)$ | $O(n \\log n)$ | $O(n \\log n)$ | $O(1)$ | No |\n\n> **Merge sort** is $O(n \\log n)$ guaranteed. **Quick sort** is faster in practice ($\\times 2$–$3\\times$) but has a worst-case $O(n^2)$.', '{"node":"cs","tool_calls":[{"name":"web_search","args":{"query":"sorting algorithms comparison time complexity"},"id":"seed_sort_1"}],"token_usage":{"input_tokens":40,"output_tokens":120,"total_tokens":160}}', 160);
