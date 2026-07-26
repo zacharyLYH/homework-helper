@@ -101,7 +101,14 @@ async def refresh(request: Request, response: Response):
         raise HTTPException(status_code=401, detail="User not found")
 
     db_expiry = get_user_refresh_expiry(email)
-    if not db_expiry or datetime.fromisoformat(db_expiry) < datetime.now(timezone.utc):
+    if not db_expiry:
+        response.delete_cookie("refresh_token", path="/")
+        response.delete_cookie("jwt_token", path="/")
+        raise HTTPException(status_code=401, detail="Refresh token revoked, please login again")
+    db_expiry_dt = datetime.fromisoformat(db_expiry)
+    if db_expiry_dt.tzinfo is None:
+        db_expiry_dt = db_expiry_dt.replace(tzinfo=timezone.utc)
+    if db_expiry_dt < datetime.now(timezone.utc):
         response.delete_cookie("refresh_token", path="/")
         response.delete_cookie("jwt_token", path="/")
         raise HTTPException(status_code=401, detail="Refresh token revoked, please login again")
