@@ -60,91 +60,100 @@ export default function ChatInput({ onSubmit, streaming, selectedChatId, selecte
   };
 
   return (
-    <form onSubmit={handleSubmit} className="border-t border-border p-4">
-      <div className="max-w-2xl mx-auto space-y-2">
-        {imageData && (
-          <div className="flex items-center gap-2">
-            <Attachment size="sm">
-              <AttachmentMedia variant="image">
-                <img
-                  src={`data:${imageMediaType};base64,${imageData}`}
-                  alt={imageName}
-                  className="h-full w-full object-cover"
-                />
-              </AttachmentMedia>
-              <AttachmentContent>
-                <AttachmentTitle>{imageName}</AttachmentTitle>
-              </AttachmentContent>
-              <AttachmentActions>
-                <AttachmentAction type="button" aria-label="Remove attachment" onClick={clearImage}>
-                  <X className="h-3 w-3" />
-                </AttachmentAction>
-              </AttachmentActions>
-            </Attachment>
-          </div>
-        )}
-        <div className="flex gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleFileSelect}
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={streaming || !selectedChatId}
-            title="Attach image"
-            className="cursor-pointer"
-          >
-            <Paperclip className="h-4 w-4" />
-          </Button>
-          <Textarea
-            ref={textInputRef}
-            rows={1}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSubmit(e);
-              }
-            }}
-            placeholder={imageData ? "Add a message (optional)..." : "Type your message..."}
-            disabled={streaming || !selectedChatId}
-            className="min-h-0 max-h-40 resize-none"
-          />
-          <Button
-            type="submit"
-            disabled={streaming || !selectedChatId || !input.trim()}
-            title={streaming ? "Waiting for response..." : "Send message"}
-            className="cursor-pointer"
-          >
-            <Send className="h-4 w-4" />
-          </Button>
-          {selectedChatId && (
+    <form onSubmit={handleSubmit} className="border-t border-border bg-background">
+      <div className="max-w-3xl mx-auto p-4">
+        <div className="rounded-3xl border border-border bg-muted/30 shadow-xs transition-shadow focus-within:shadow-sm focus-within:border-ring/50">
+          {imageData && (
+            <div className="flex items-center gap-2 px-4 pt-3">
+              <Attachment size="sm">
+                <AttachmentMedia variant="image">
+                  <img
+                    src={`data:${imageMediaType};base64,${imageData}`}
+                    alt={imageName}
+                    className="h-full w-full object-cover"
+                  />
+                </AttachmentMedia>
+                <AttachmentContent>
+                  <AttachmentTitle>{imageName}</AttachmentTitle>
+                </AttachmentContent>
+                <AttachmentActions>
+                  <AttachmentAction type="button" aria-label="Remove attachment" onClick={clearImage}>
+                    <X className="h-3 w-3" />
+                  </AttachmentAction>
+                </AttachmentActions>
+              </Attachment>
+            </div>
+          )}
+          <div className="flex items-end gap-2 p-3">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
             <Tooltip>
               <TooltipTrigger asChild>
-                <button type="button" className="relative flex items-center justify-center w-9 h-9 shrink-0">
-                  <svg className="w-6 h-6 -rotate-90" viewBox="0 0 36 36">
-                    <circle cx="18" cy="18" r="15" fill="none" stroke="currentColor" strokeWidth="3" className="text-border" />
-                    <circle
-                      cx="18" cy="18" r="15" fill="none" stroke="currentColor" strokeWidth="3"
-                      strokeDasharray={`${chatTokenPercent} 100`}
-                      className="text-muted-foreground/40"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={streaming || !selectedChatId}
+                  className="cursor-pointer shrink-0 text-muted-foreground hover:text-foreground"
+                >
+                  <Paperclip className="h-4 w-4" />
+                </Button>
               </TooltipTrigger>
-              <TooltipContent>
-                <p>{selectedChatTokens.toLocaleString()} / {chatTokenLimit.toLocaleString()} tokens</p>
-              </TooltipContent>
+              <TooltipContent>Attach image</TooltipContent>
             </Tooltip>
-          )}
+            <Textarea
+              ref={textInputRef}
+              rows={1}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit(e);
+                }
+              }}
+              placeholder={imageData ? "Add a message (optional)..." : "Type your message..."}
+              disabled={streaming || !selectedChatId}
+              className="min-h-0 max-h-40 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 py-1.5"
+            />
+            <div className="flex items-center gap-1 shrink-0">
+              {selectedChatId && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button type="button" className="relative flex items-center justify-center w-7 h-7 shrink-0">
+                      <svg className="w-5 h-5 -rotate-90" viewBox="0 0 36 36">
+                        <circle cx="18" cy="18" r="15" fill="none" stroke="currentColor" strokeWidth="3" className="text-border" />
+                        <circle
+                          cx="18" cy="18" r="15" fill="none" stroke="currentColor" strokeWidth="3"
+                          strokeDasharray={`${chatTokenPercent} 100`}
+                          className="text-muted-foreground/30"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    <p>{selectedChatTokens.toLocaleString()} / {chatTokenLimit.toLocaleString()} tokens</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              <Button
+                type="submit"
+                disabled={streaming || !selectedChatId || !input.trim()}
+                title={streaming ? "Waiting for response..." : "Send message"}
+                className="cursor-pointer rounded-full"
+                size={input.trim() ? "icon" : "icon"}
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
     </form>

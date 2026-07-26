@@ -14,6 +14,7 @@ The following list of rules is true no matter what kind of code you're writing, 
 2. Do not speculate what the user wants. Just ask.
 3. KISS in general. Simple architecture, simple code patterns, minimal external dependencies. 
 4. When discussing with the user, like in a code deep dive for example, you should always be concise with your answers. Wall of text is not the right way to format responses. Responses to technical discussion should be short, concise, and in bullet point form where required. You should SACRIFICE grammatical correctness for concision. 
+5. This is an AI app. The layout and behavior of most components is well understood and we don't intend to greatly deviate from established UX and practices. YOU SHOULD ALWAYS USE COMMON SENSE AND MAKE SMALL JUDGEMENT CALLS.
 
 # Coding standards in general
 

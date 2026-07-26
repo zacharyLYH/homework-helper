@@ -53,6 +53,7 @@ export interface TokenUsage {
 }
 
 export interface ChatMessage {
+  id?: number;
   role: "user" | "assistant";
   content: string;
   image?: string;

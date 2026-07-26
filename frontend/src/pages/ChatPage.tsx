@@ -2,8 +2,8 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { sendChatStream, getSubjects, getChats, getMessages, type ChatMessage, type TokenUsage, getUsageFromMetadata, type ChatSummary } from "@/lib/api";
-import Sidebar from "@/components/Sidebar";
-import ResizeHandle from "@/components/ResizeHandle";
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/AppSidebar";
 import ChatHeader from "@/components/ChatHeader";
 import ChatMessages from "@/components/ChatMessages";
 import ChatInput from "@/components/ChatInput";
@@ -18,7 +18,6 @@ export default function ChatPage() {
   const [currentMessageUsage, setCurrentMessageUsage] = useState<TokenUsage | null>(null);
   const [streaming, setStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
-  const [sidebarWidth, setSidebarWidth] = useState(256);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -47,6 +46,7 @@ export default function ChatPage() {
     try {
       const msgs = await getMessages(chatId);
       const formatted: ChatMessage[] = msgs.map((m) => ({
+        id: m.id,
         role: m.role as "user" | "assistant",
         content: m.content,
         image: m.image_base64 || undefined,
@@ -176,6 +176,11 @@ export default function ChatPage() {
     sendMessage(userMessage, [...messages.slice(0, targetIndex), userMessage]);
   }, [streaming, selectedChatId, messages, sendMessage]);
 
+  const handleClearChat = useCallback(() => {
+    setSelectedChatId(null);
+    setMessages([]);
+  }, []);
+
   const handleLogout = async () => {
     abortRef.current?.abort();
     await logout();
@@ -191,33 +196,31 @@ export default function ChatPage() {
     : 0;
 
   return (
-    <div className="flex flex-col h-screen bg-background">
-      <ChatHeader email={user?.email} onDebug={() => navigate("/debug")} onLogout={handleLogout} />
-
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar
-          subjects={subjects}
-          chatsBySubject={chatsBySubject}
-          loading={loading}
-          selectedChatId={selectedChatId}
-          onSelectChat={handleSelectChat}
-          onChatCreated={handleChatCreated}
-          onSubjectCreated={handleSubjectCreated}
-          style={{ width: sidebarWidth }}
-        />
-        <ResizeHandle startWidth={sidebarWidth} onResize={setSidebarWidth} />
-
-        <ChatMessages selectedChatId={selectedChatId} messages={messages} streaming={streaming} onRetry={handleRetry} />
-      </div>
-
-      <ChatInput
-        onSubmit={handleSubmitMessage}
-        streaming={streaming}
+    <SidebarProvider>
+      <AppSidebar
+        subjects={subjects}
+        chatsBySubject={chatsBySubject}
+        loading={loading}
         selectedChatId={selectedChatId}
-        selectedChatTokens={selectedChat?.total_tokens ?? 0}
-        chatTokenLimit={chatTokenLimit}
-        chatTokenPercent={chatTokenPercent}
+        onSelectChat={handleSelectChat}
+        onChatCreated={handleChatCreated}
+        onSubjectCreated={handleSubjectCreated}
+        onClearChat={handleClearChat}
       />
-    </div>
+      <SidebarInset className="flex flex-col bg-background h-svh overflow-hidden">
+        <ChatHeader email={user?.email} onDebug={() => navigate("/debug")} onLogout={handleLogout} />
+        <div className="flex flex-1 overflow-hidden">
+          <ChatMessages selectedChatId={selectedChatId} messages={messages} streaming={streaming} onRetry={handleRetry} />
+        </div>
+        <ChatInput
+          onSubmit={handleSubmitMessage}
+          streaming={streaming}
+          selectedChatId={selectedChatId}
+          selectedChatTokens={selectedChat?.total_tokens ?? 0}
+          chatTokenLimit={chatTokenLimit}
+          chatTokenPercent={chatTokenPercent}
+        />
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

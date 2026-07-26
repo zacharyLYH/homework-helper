@@ -1,12 +1,46 @@
-import { Copy, Loader2, RefreshCw } from "lucide-react";
+import { useState } from "react";
+import { Check, Copy, RefreshCw } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import "katex/dist/katex.min.css";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Message, MessageContent, MessageFooter } from "@/components/ui/message";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import type { ChatMessage } from "@/lib/api";
+
+function CodeBlock({ className, children, ...props }: React.ComponentPropsWithoutRef<"code">) {
+  const [copied, setCopied] = useState(false);
+  const isInline = !className;
+  const code = String(children).replace(/\n$/, "");
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  if (isInline) {
+    return <code className="rounded bg-muted px-1.5 py-0.5 text-sm font-mono" {...props}>{children}</code>;
+  }
+
+  return (
+    <div className="relative group">
+      <div className="flex items-center justify-between rounded-t-lg bg-zinc-800 px-4 py-1.5 text-xs text-zinc-400">
+        <span>{className?.replace("language-", "") || "code"}</span>
+        <button onClick={handleCopy} className="hover:text-zinc-200 transition-colors">
+          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        </button>
+      </div>
+      <pre className="overflow-x-auto rounded-b-lg bg-zinc-900 p-4 text-sm leading-relaxed">
+        <code className={className} {...props}>{children}</code>
+      </pre>
+    </div>
+  );
+}
 
 export default function MessageBubble({ msg, isStreaming, isLast, onRetry }: { msg: ChatMessage; isStreaming: boolean; isLast: boolean; onRetry?: () => void }) {
   const isUser = msg.role === "user";
@@ -17,7 +51,11 @@ export default function MessageBubble({ msg, isStreaming, isLast, onRetry }: { m
         <MessageContent>
           <Bubble variant="muted">
             <BubbleContent>
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="flex items-center gap-1 py-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce" style={{ animationDelay: "300ms" }} />
+              </span>
             </BubbleContent>
           </Bubble>
         </MessageContent>
@@ -42,8 +80,18 @@ export default function MessageBubble({ msg, isStreaming, isLast, onRetry }: { m
                 {msg.content}
               </>
             ) : (
-              <div className="prose prose-sm max-w-none">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>{msg.content}</ReactMarkdown>
+              <div className="prose prose-sm max-w-none dark:prose-invert">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeRaw, rehypeKatex]}
+                  components={{
+                    code({ className, children, ...props }) {
+                      return <CodeBlock className={className} {...props}>{children}</CodeBlock>;
+                    },
+                  }}
+                >
+                  {msg.content}
+                </ReactMarkdown>
               </div>
             )}
           </BubbleContent>

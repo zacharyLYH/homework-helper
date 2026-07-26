@@ -1,30 +1,51 @@
-import { useRef, useEffect } from "react";
+import { MessageSquare } from "lucide-react";
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from "@/components/ui/message-scroller";
 import MessageBubble from "@/components/MessageBubble";
 import type { ChatMessage } from "@/lib/api";
 
 export default function ChatMessages({ selectedChatId, messages, streaming, onRetry }: { selectedChatId: number | null; messages: ChatMessage[]; streaming: boolean; onRetry?: (index: number) => void }) {
-  const endRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4">
-      {!selectedChatId ? (
-        <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-          Select a chat or create a new one to get started.
-        </div>
-      ) : messages.length === 0 ? (
-        <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-          Ask me anything about your homework!
-        </div>
-      ) : (
-        messages.map((msg, i) => (
-          <MessageBubble key={i} msg={msg} isStreaming={streaming} isLast={i === messages.length - 1} onRetry={onRetry ? () => onRetry(i) : undefined} />
-        ))
-      )}
-      <div ref={endRef} />
+    <div className="flex-1 overflow-hidden">
+      <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor" scrollPreviousItemPeek={64}>
+        {!selectedChatId ? (
+          <div className="flex flex-col items-center justify-center h-full gap-3 p-4 text-muted-foreground">
+            <MessageSquare className="h-10 w-10 opacity-20" />
+            <p className="text-sm">Select a chat to get started</p>
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full gap-4 p-4 px-8">
+            <img src="/hh-icon.png" alt="Homework Helper" className="h-14 w-14 rounded-2xl" />
+            <div className="text-center space-y-2">
+              <h2 className="text-xl font-semibold text-foreground">Homework Helper</h2>
+              <p className="text-sm text-muted-foreground max-w-sm leading-relaxed">
+                I can help you understand concepts, solve problems, and prepare for exams. What are you working on?
+              </p>
+            </div>
+          </div>
+        ) : (
+          <MessageScroller>
+            <MessageScrollerViewport>
+              <MessageScrollerContent className="p-4 gap-6" aria-busy={streaming}>
+                {messages.map((msg, i) => (
+                  <MessageScrollerItem key={msg.id ?? i} messageId={String(msg.id ?? i)} scrollAnchor={msg.role === "user"}>
+                    <div className="animate-fade-in">
+                      <MessageBubble msg={msg} isStreaming={streaming} isLast={i === messages.length - 1} onRetry={onRetry ? () => onRetry(i) : undefined} />
+                    </div>
+                  </MessageScrollerItem>
+                ))}
+              </MessageScrollerContent>
+            </MessageScrollerViewport>
+            <MessageScrollerButton />
+          </MessageScroller>
+        )}
+      </MessageScrollerProvider>
     </div>
   );
 }
