@@ -275,11 +275,16 @@ def update_chat_title(chat_id: int, title: str) -> Optional[Chat]:
 def list_messages_with_logs() -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute("""
-            SELECT DISTINCT m.* FROM messages m
+            SELECT DISTINCT m.*, c.title AS chat_title, c.mode AS chat_mode,
+                  s.name AS subject_name, u.email AS user_email
+            FROM messages m
             INNER JOIN structured_logs sl ON sl.message_id = m.id
+            LEFT JOIN chats c ON m.chat_id = c.id
+            LEFT JOIN subjects s ON c.subject_id = s.id
+            LEFT JOIN users u ON c.user_id = u.id
             ORDER BY m.created_at DESC
         """).fetchall()
-        return [_row_to_message(r).model_dump() for r in rows]
+        return [dict(r) for r in rows]
 
 
 def update_chat_token_usage(chat_id: int, input_tokens: int, output_tokens: int, total_tokens: int) -> None:

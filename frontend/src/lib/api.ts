@@ -187,6 +187,10 @@ export interface Message {
   metadata_json?: string;
   token_count: number;
   created_at: string;
+  chat_title?: string;
+  chat_mode?: string;
+  subject_name?: string;
+  user_email?: string;
 }
 
 export function getUsageFromMetadata(metadata_json?: string): TokenUsage | undefined {

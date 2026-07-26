@@ -592,6 +592,10 @@ function WaterfallTrace({ logs, message }: { logs: StructuredLog[]; message: Mes
         </Badge>
         <span className="font-medium text-foreground">Message #{message.id}</span>
         <span>{message.created_at}</span>
+        {message.subject_name && <span className="text-foreground/60">{message.subject_name}</span>}
+        {message.chat_title && <span className="truncate text-foreground/60">{message.chat_title}</span>}
+        {message.user_email && <span className="text-foreground/40">{message.user_email}</span>}
+        {message.chat_mode && <span className="uppercase text-[9px] text-foreground/40">{message.chat_mode}</span>}
         <span className="truncate ml-auto text-foreground/60">{message.content.slice(0, 100)}</span>
       </div>
 
@@ -753,9 +757,16 @@ function TracePanel() {
                   {msg.role}
                 </Badge>
                 <span className="text-xs font-medium text-foreground">#{msg.id}</span>
-                <span className="text-[10px] text-muted-foreground ml-auto">{msg.chat_id && `chat=${msg.chat_id}`}</span>
+                <span className="text-[10px] text-muted-foreground ml-auto">
+                  {msg.subject_name ? msg.subject_name : msg.chat_id && `chat=${msg.chat_id}`}
+                </span>
               </div>
-              <p className="text-[11px] text-muted-foreground truncate">{msg.content}</p>
+              <p className="text-[11px] text-muted-foreground truncate mb-0.5">{msg.content}</p>
+              <div className="flex items-center gap-2 text-[9px] text-muted-foreground/60">
+                {msg.chat_title && <span className="truncate">{msg.chat_title}</span>}
+                {msg.user_email && <span className="truncate">{msg.user_email}</span>}
+                {msg.chat_mode && <span>{msg.chat_mode}</span>}
+              </div>
             </button>
           ))}
         </div>
