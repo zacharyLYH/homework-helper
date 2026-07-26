@@ -42,7 +42,7 @@ jobs:
 
       - name: Pyright (backend)
         working-directory: backend
-        run: npx pyright app/
+        run: uv run pyright app/
 
   build-frontend:
     name: Build Frontend
