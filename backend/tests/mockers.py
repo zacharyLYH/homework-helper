@@ -2,15 +2,13 @@ import json
 from unittest.mock import patch
 
 import httpx
-from langchain_openai import ChatOpenAI
-from pydantic import SecretStr
 
 
 def mock_llm(content: str = "Hello!", model: str = "gpt-4"):
-    """Patch _make_llm to return a real ChatOpenAI with a mocked HTTP transport.
+    """Intercept HTTP calls so the real _make_llm & ChatOpenAI work.
 
-    Only the HTTP call to the LLM provider is intercepted — all LangChain
-    and LangGraph plumbing runs for real.
+    Patches _get_default_async_httpx_client so every ChatOpenAI created
+    during the patch uses a mock transport instead of real HTTP.
     """
 
     async def _handler(request: httpx.Request) -> httpx.Response:
@@ -63,18 +61,12 @@ def mock_llm(content: str = "Hello!", model: str = "gpt-4"):
         return f"data: {data}\n\n".encode()
 
     transport = httpx.MockTransport(_handler)
-    http_async_client = httpx.AsyncClient(transport=transport)
+    mock_client = httpx.AsyncClient(transport=transport)
 
-    def _make_mock_llm(model_name: str) -> ChatOpenAI:
-        return ChatOpenAI(
-            http_async_client=http_async_client,
-            api_key=SecretStr("sk-fake"),
-            model=model_name,
-            temperature=0.7,
-            max_completion_tokens=1024,
-        )
-
-    return patch("app.llm._make_llm", side_effect=_make_mock_llm)
+    return patch(
+        "langchain_openai.chat_models.base._get_default_async_httpx_client",
+        return_value=mock_client,
+    )
 
 
 def mock_title_llm(title: str = "Test Chat Title"):
