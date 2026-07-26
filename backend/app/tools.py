@@ -1,6 +1,7 @@
 import ast
 import operator
 
+import httpx
 from langchain_core.tools import tool
 
 from app.schemas import RouteCategory
@@ -64,6 +65,77 @@ def text_stats(text: str) -> str:
 
 
 @tool
+def web_search(query: str) -> str:
+    """Search the web using DuckDuckGo. Call this tool ANY TIME the user asks about current events, news, recent developments, specific people/places/things, or any factual topic you're not fully confident about. Always search before guessing or making up information."""
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (compatible; SearchBot/1.0)",
+        }
+        with httpx.Client(timeout=10.0, headers=headers) as client:
+            resp = client.get(
+                "https://api.duckduckgo.com/",
+                params={"q": query, "format": "json"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+            parts = []
+
+            abstract = data.get("AbstractText", "")
+            if abstract:
+                source = data.get("AbstractSource", "")
+                url = data.get("AbstractURL", "")
+                parts.append(f"Featured snippet: {abstract}")
+                if source:
+                    parts.append(f"Source: {source} ({url})")
+                parts.append("")
+
+            heading = data.get("Heading", "")
+            definition = data.get("Definition", "")
+            if heading and definition:
+                parts.append(f"{heading}: {definition}")
+                parts.append("")
+
+            answer = data.get("Answer", "")
+            answer_type = data.get("AnswerType", "")
+            if answer:
+                parts.append(f"Answer: {answer}")
+                if answer_type:
+                    parts.append(f"Type: {answer_type}")
+                parts.append("")
+
+            results = data.get("Results", [])
+            if results:
+                parts.append("Results:")
+                for i, r in enumerate(results[:8], 1):
+                    text = r.get("Text", "")
+                    result_url = r.get("FirstURL", "")
+                    if text:
+                        parts.append(f"  {i}. {text}")
+                    if result_url:
+                        parts.append(f"     {result_url}")
+                parts.append("")
+
+            for topic in data.get("RelatedTopics", []):
+                if "Text" in topic:
+                    parts.append(f"- {topic['Text']}")
+                elif "Topics" in topic:
+                    for t in topic["Topics"][:3]:
+                        text = t.get("Text", "")
+                        if text:
+                            parts.append(f"- {text}")
+
+            if not parts:
+                return f"No results found for '{query}'."
+
+            return "\n".join(parts[:20]).strip()
+    except httpx.HTTPError as e:
+        return f"Web search error: {e}"
+    except Exception as e:
+        return f"Web search error: {e}"
+
+
+@tool
 def route(category: RouteCategory) -> str:
     """Classify the user message into a category. Call this to route the conversation."""
     return category.value
@@ -71,5 +143,5 @@ def route(category: RouteCategory) -> str:
 
 # --- Tool collections ---
 
-REAL_TOOLS = [calculator, word_count, text_stats]
+REAL_TOOLS = [calculator, word_count, text_stats, web_search]
 ALL_TOOLS = REAL_TOOLS + [route]

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { sendChatStream, getSubjects, getChats, getMessages, type ChatMessage, type TokenUsage, getUsageFromMetadata, type ChatSummary } from "@/lib/api";
+import { sendChatStream, getSubjects, getChats, getMessages, type ChatMessage, type TokenUsage, getUsageFromMetadata, type ChatSummary, type ToolCallInfo } from "@/lib/api";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import ChatHeader from "@/components/ChatHeader";
@@ -17,6 +17,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentMessageUsage, setCurrentMessageUsage] = useState<TokenUsage | null>(null);
   const [streaming, setStreaming] = useState(false);
+  const [toolCalls, setToolCalls] = useState<ToolCallInfo[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -110,6 +111,7 @@ export default function ChatPage() {
       });
     }
     setStreaming(false);
+    setToolCalls([]);
   }, [selectedChatId]);
 
   const onTitle = useCallback((title: string) => {
@@ -128,12 +130,18 @@ export default function ChatPage() {
       return updated;
     });
     setStreaming(false);
+    setToolCalls([]);
+  }, []);
+
+  const onToolCall = useCallback((toolCall: ToolCallInfo) => {
+    setToolCalls((prev) => [...prev, toolCall]);
   }, []);
 
   const sendMessage = useCallback((userMessage: ChatMessage, contextMessages: ChatMessage[]) => {
     if (streaming || !selectedChatId) return;
 
     setCurrentMessageUsage(null);
+    setToolCalls([]);
     setMessages([...contextMessages, { role: "assistant", content: "" } as ChatMessage]);
     setStreaming(true);
 
@@ -147,8 +155,9 @@ export default function ChatPage() {
       onDone,
       onError,
       onTitle,
+      onToolCall,
     });
-  }, [streaming, selectedChatId, onToken, onDone, onError, onTitle]);
+  }, [streaming, selectedChatId, onToken, onDone, onError, onTitle, onToolCall]);
 
   const handleSubmitMessage = useCallback(async (text: string, image?: { data: string; mediaType: string; name: string }) => {
     if (!text || streaming || !selectedChatId) return;
@@ -210,7 +219,7 @@ export default function ChatPage() {
       <SidebarInset className="flex flex-col bg-background h-svh overflow-hidden">
         <ChatHeader email={user?.email} onDebug={() => navigate("/debug")} onLogout={handleLogout} />
         <div className="flex flex-1 overflow-hidden">
-          <ChatMessages selectedChatId={selectedChatId} messages={messages} streaming={streaming} onRetry={handleRetry} />
+          <ChatMessages selectedChatId={selectedChatId} messages={messages} streaming={streaming} toolCalls={toolCalls} onRetry={handleRetry} />
         </div>
         <ChatInput
           onSubmit={handleSubmitMessage}

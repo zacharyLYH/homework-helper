@@ -145,6 +145,47 @@ async def test_chat_stream_unicode_message(client, auth_and_chat):
         assert msgs[1]["content"] == "¡Hola! 你好 こんにちは"
 
 
+async def test_chat_stream_with_image(client, auth_and_chat):
+    chat_id = await auth_and_chat()
+    token = _make_token()
+    image_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+
+    with mock_llm(content="Image received"), mock_title_llm("Test Title"):
+        resp = await client.post(
+            "/api/chat/stream",
+            json={
+                "message": "What is in this image?",
+                "chat_id": chat_id,
+                "image": image_b64,
+                "image_media_type": "image/png",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        body = resp.text
+
+    assert resp.status_code == 200
+    lines = [l for l in body.split("\n") if l.strip()]
+
+    token_lines = [l for l in lines if '"type": "token"' in l]
+    assert len(token_lines) == 2
+    assert json.loads(token_lines[0].removeprefix("data: "))["content"] == "Image "
+    assert json.loads(token_lines[1].removeprefix("data: "))["content"] == "received"
+
+    with get_conn() as conn:
+        msgs = conn.execute(
+            "SELECT role, content, image_base64, image_media_type FROM messages WHERE chat_id = ? ORDER BY created_at",
+            (chat_id,),
+        ).fetchall()
+
+    assert len(msgs) == 2
+    assert msgs[0]["role"] == "user"
+    assert msgs[0]["content"] == "What is in this image?"
+    assert msgs[0]["image_base64"] == image_b64
+    assert msgs[0]["image_media_type"] == "image/png"
+    assert msgs[1]["role"] == "assistant"
+    assert msgs[1]["content"] == "Image received"
+
+
 async def test_chat_stream_second_message(client, auth_and_chat):
     """Send two consecutive messages — graph loads full message history."""
     chat_id = await auth_and_chat()

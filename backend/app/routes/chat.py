@@ -48,8 +48,10 @@ def _save_user_message(req: ChatRequest) -> None:
     )
 
 
-def _save_assistant_message(chat_id: int | None, full_reply: str, model_used: str, total_usage: dict) -> None:
+def _save_assistant_message(chat_id: int | None, full_reply: str, model_used: str, total_usage: dict, tools_used: list[str] | None = None) -> None:
     metadata = {"model": model_used, "usage": total_usage}
+    if tools_used:
+        metadata["tools_used"] = tools_used
     save_message(
         chat_id=chat_id or 0,
         role="assistant",
@@ -101,13 +103,13 @@ async def _maybe_generate_title(chat_id: int | None) -> AsyncGenerator[str, None
 
 @router.post("/api/chat/stream")
 async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
-    thread_id = str(req.chat_id) if req.chat_id else (req.thread_id or str(uuid.uuid4()))
+    thread_id = str(uuid.uuid4())
     log.info("Chat stream request: thread_id=%s, chat_id=%s, message_length=%d", thread_id, req.chat_id, len(req.message))
 
     _save_user_message(req)
 
     lc_messages = _build_lc_messages(req)
-    initial_state = {"messages": lc_messages, "category": "", "model": "unknown"}
+    initial_state = {"messages": lc_messages, "model": "unknown", "pending_tool_calls": 0}
     config = RunnableConfig(configurable={"thread_id": thread_id})
 
     async def event_generator():
@@ -117,15 +119,34 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
 
         title_events: list[str] = []
         queue: asyncio.Queue = asyncio.Queue()
+        pending_tool_calls = 0
+        tools_used: list[str] = []
 
         async def _stream_graph():
-            nonlocal full_reply, model_used, total_usage
+            nonlocal full_reply, model_used, total_usage, pending_tool_calls, tools_used
             try:
                 async for event in compiled_graph.astream_events(
                     initial_state, config=config, version="v2"
                 ):
                     node_name = event.get("metadata", {}).get("langgraph_node", "")
-                    if node_name in ("router", "tool_executor"):
+
+                    if event["event"] == "on_chat_model_end":
+                        output = event["data"].get("output")
+                        if isinstance(output, AIMessage) and output.tool_calls:
+                            for tc in output.tool_calls:
+                                if tc["name"] == "route":
+                                    continue
+                                if tc["name"] not in tools_used:
+                                    tools_used.append(tc["name"])
+                                pending_tool_calls += 1
+                                await queue.put(f"data: {json.dumps({'type': 'tool_call', 'name': tc['name'], 'args': tc['args'], 'id': tc['id']})}\n\n")
+
+                    if pending_tool_calls > 0:
+                        if node_name == "tool_executor" and event["event"] == "on_chain_end":
+                            pending_tool_calls = 0
+                        continue
+
+                    if node_name == "tool_executor":
                         continue
 
                     if event["event"] == "on_chat_model_stream":
@@ -182,7 +203,7 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
             yield item
 
         await graph_task
-        _save_assistant_message(req.chat_id, full_reply, model_used, total_usage)
+        _save_assistant_message(req.chat_id, full_reply, model_used, total_usage, tools_used=tools_used if tools_used else None)
         yield f"data: {json.dumps({'type': 'done', 'thread_id': thread_id, 'model': model_used, 'usage': total_usage})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

@@ -14,8 +14,8 @@ from typing_extensions import Annotated, TypedDict
 
 class GraphState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
-    category: str
     model: str
+    pending_tool_calls: int
 
 
 # --- Enums ---

@@ -7,9 +7,9 @@ import {
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller";
 import MessageBubble from "@/components/MessageBubble";
-import type { ChatMessage } from "@/lib/api";
+import type { ChatMessage, ToolCallInfo } from "@/lib/api";
 
-export default function ChatMessages({ selectedChatId, messages, streaming, onRetry }: { selectedChatId: number | null; messages: ChatMessage[]; streaming: boolean; onRetry?: (index: number) => void }) {
+export default function ChatMessages({ selectedChatId, messages, streaming, toolCalls, onRetry }: { selectedChatId: number | null; messages: ChatMessage[]; streaming: boolean; toolCalls: ToolCallInfo[]; onRetry?: (index: number) => void }) {
   return (
     <div className="flex-1 overflow-hidden">
       <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor" scrollPreviousItemPeek={64}>
@@ -31,6 +31,16 @@ export default function ChatMessages({ selectedChatId, messages, streaming, onRe
                   <MessageScrollerItem key={msg.id ?? i} messageId={String(msg.id ?? i)} scrollAnchor={msg.role === "user"}>
                     <div className="animate-fade-in">
                       <MessageBubble msg={msg} isStreaming={streaming} isLast={i === messages.length - 1} onRetry={onRetry ? () => onRetry(i) : undefined} />
+                      {toolCalls.length > 0 && i === messages.length - 2 && msg.role === "user" && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {toolCalls.map((tc) => (
+                            <div key={tc.id} className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/50 rounded-full px-3 py-1">
+                              <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                              {tc.name === "web_search" ? `Searching for "${tc.args.query}"` : `Using ${tc.name}...`}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </MessageScrollerItem>
                 ))}

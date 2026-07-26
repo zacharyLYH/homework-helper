@@ -63,6 +63,12 @@ export interface ChatMessage {
   tokenCount?: number;
 }
 
+export interface ToolCallInfo {
+  name: string;
+  args: Record<string, unknown>;
+  id: string;
+}
+
 export interface ChatStreamOptions {
   message: string;
   chatId?: number;
@@ -73,10 +79,11 @@ export interface ChatStreamOptions {
   onDone: (usage?: TokenUsage) => void;
   onError: (error: string) => void;
   onTitle?: (title: string) => void;
+  onToolCall?: (toolCall: ToolCallInfo) => void;
 }
 
 export function sendChatStream(options: ChatStreamOptions): AbortController {
-  const { message, chatId, image, imageMediaType, messages, onToken, onDone, onError, onTitle } = options;
+  const { message, chatId, image, imageMediaType, messages, onToken, onDone, onError, onTitle, onToolCall } = options;
   const controller = new AbortController();
 
   fetch(`${API_BASE}/chat/stream`, {
@@ -119,6 +126,7 @@ export function sendChatStream(options: ChatStreamOptions): AbortController {
               else if (data.type === "done") {
                 onDone(data.usage);
               }
+              else if (data.type === "tool_call" && onToolCall) onToolCall({ name: data.name, args: data.args, id: data.id });
               else if (data.type === "error") onError(data.content);
             } catch {}
           }

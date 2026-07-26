@@ -1,7 +1,7 @@
 from collections.abc import AsyncGenerator
 from typing import Literal
 
-from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.messages import SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -10,45 +10,25 @@ from langgraph.prebuilt import ToolNode
 from app.llm import stream_llm
 from app.logging import get_logger
 from app.schemas import GraphState
-from app.tools import ALL_TOOLS, REAL_TOOLS
+from app.tools import ALL_TOOLS
 
 log = get_logger(__name__)
 
 
-MATH_SYSTEM_PROMPT = "You are a math tutor. Show step-by-step reasoning. Use the calculator tool when needed."
-CODE_SYSTEM_PROMPT = "You are a senior software engineer. Help with code questions clearly and concisely."
-GENERAL_SYSTEM_PROMPT = "You are a helpful assistant. Answer clearly and concisely."
+AGENT_SYSTEM_PROMPT = """You are a helpful homework assistant. Answer clearly and concisely using the tools available to you."""
 
 
-# --- Custom tool executor that updates category in state ---
+# --- Tool executor ---
 
 
 def tool_executor(state: GraphState) -> dict:
     last_msg = state["messages"][-1]
-    if not isinstance(last_msg, AIMessage) or not last_msg.tool_calls:
-        return {"messages": []}
-
-    tool_results = []
-    category = state.get("category", "")
-
-    for tc in last_msg.tool_calls:
-        if tc["name"] == "route":
-            cat_value = tc["args"].get("category", "general")
-            category = cat_value
-            log.info("Route tool called: category=%s", cat_value)
-            tool_results.append(AIMessage(
-                content=f"Routed to: {cat_value}",
-                tool_call_id=tc["id"],
-            ))
-        else:
-            result = ToolNode(REAL_TOOLS).invoke({"messages": [last_msg]})
-            tool_results.extend(result.get("messages", []))
-            break
-
-    return {"messages": tool_results, "category": category}
+    result = ToolNode(ALL_TOOLS).invoke({"messages": [last_msg]})
+    tpc = state.get("pending_tool_calls", 0)
+    return {"messages": result.get("messages", []), "pending_tool_calls": max(0, tpc - 1)}
 
 
-# --- Nodes ---
+# --- Agent node ---
 
 
 async def _node_with_prompt(
@@ -64,50 +44,27 @@ async def _node_with_prompt(
         yield {"messages": [chunk]}
 
 
-async def router(state: GraphState, config: RunnableConfig | None = None) -> AsyncGenerator[dict, None]:
-    log.info("Router node invoked")
-    async for update in _node_with_prompt(state, "", bind_tools=ALL_TOOLS, config=config):
-        yield update
-
-
-async def math_solver(state: GraphState, config: RunnableConfig | None = None) -> AsyncGenerator[dict, None]:
-    log.info("Math solver node invoked")
-    async for update in _node_with_prompt(state, MATH_SYSTEM_PROMPT, bind_tools=REAL_TOOLS, config=config):
-        yield update
-
-
-async def code_helper(state: GraphState, config: RunnableConfig | None = None) -> AsyncGenerator[dict, None]:
-    log.info("Code helper node invoked")
-    async for update in _node_with_prompt(state, CODE_SYSTEM_PROMPT, config=config):
-        yield update
-
-
-async def responder(state: GraphState, config: RunnableConfig | None = None) -> AsyncGenerator[dict, None]:
-    log.info("Responder node invoked")
-    async for update in _node_with_prompt(state, GENERAL_SYSTEM_PROMPT, config=config):
+async def agent(state: GraphState, config: RunnableConfig | None = None) -> AsyncGenerator[dict, None]:
+    log.info("Agent node invoked")
+    pending = 0
+    async for update in _node_with_prompt(state, AGENT_SYSTEM_PROMPT, bind_tools=ALL_TOOLS, config=config):
+        chunk = update.get("messages", [None])[0]
+        if not pending and hasattr(chunk, "tool_call_chunks") and chunk.tool_call_chunks:
+            for tcc in chunk.tool_call_chunks:
+                if tcc.get("name"):
+                    pending = 1
+                    break
+        update["pending_tool_calls"] = pending
         yield update
 
 
 # --- Conditional edges ---
 
 
-def route_after_router(state: GraphState) -> Literal["math_solver", "code_helper", "tool_executor", "responder"]:
-    last_msg = state["messages"][-1]
-    if isinstance(last_msg, AIMessage) and last_msg.tool_calls:
+def route_after_agent(state: GraphState) -> Literal["tool_executor", "end"]:
+    if state.get("pending_tool_calls", 0) > 0:
         return "tool_executor"
-    category = state.get("category", "")
-    if category == "math":
-        return "math_solver"
-    if category == "code":
-        return "code_helper"
-    return "responder"
-
-
-def route_after_math(state: GraphState) -> Literal["tool_executor", "router"]:
-    last_msg = state["messages"][-1]
-    if isinstance(last_msg, AIMessage) and last_msg.tool_calls:
-        return "tool_executor"
-    return "router"
+    return "end"
 
 
 # --- Graph builder ---
@@ -117,26 +74,15 @@ def build_graph() -> CompiledStateGraph:
     log.info("Building LangGraph state machine")
     graph_builder = StateGraph(GraphState)
 
-    graph_builder.add_node("router", router)
-    graph_builder.add_node("math_solver", math_solver)
-    graph_builder.add_node("code_helper", code_helper)
-    graph_builder.add_node("responder", responder)
+    graph_builder.add_node("agent", agent)
     graph_builder.add_node("tool_executor", tool_executor)
 
-    graph_builder.add_edge(START, "router")
-    graph_builder.add_conditional_edges("router", route_after_router, {
-        "math_solver": "math_solver",
-        "code_helper": "code_helper",
+    graph_builder.add_edge(START, "agent")
+    graph_builder.add_conditional_edges("agent", route_after_agent, {
         "tool_executor": "tool_executor",
-        "responder": "responder",
+        "end": END,
     })
-    graph_builder.add_conditional_edges("math_solver", route_after_math, {
-        "tool_executor": "tool_executor",
-        "router": "router",
-    })
-    graph_builder.add_edge("tool_executor", "router")
-    graph_builder.add_edge("code_helper", END)
-    graph_builder.add_edge("responder", END)
+    graph_builder.add_edge("tool_executor", "agent")
 
     from langgraph.checkpoint.memory import MemorySaver
     memory = MemorySaver()
