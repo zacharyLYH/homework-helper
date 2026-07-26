@@ -127,6 +127,8 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
         "messages": lc_messages,
         "model": "unknown",
         "pending_tool_calls": 0,
+        "pending_tool_calls_data": [],
+        "called_tools": [],
     }
     config = RunnableConfig(configurable={"thread_id": thread_id})
 

@@ -16,6 +16,8 @@ class GraphState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
     model: str
     pending_tool_calls: int
+    pending_tool_calls_data: list[dict]
+    called_tools: list[str]
 
 
 # --- Enums ---
