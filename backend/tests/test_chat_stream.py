@@ -1,11 +1,9 @@
 import json
-from unittest.mock import patch
 
 import pytest
-from langchain_core.messages import AIMessage, AIMessageChunk
 
 from app.db import get_conn
-from tests.mockers import FakeChatModel, mock_title_llm
+from tests.mockers import mock_llm, mock_title_llm
 
 
 @pytest.fixture
@@ -39,10 +37,8 @@ async def test_chat_stream_events(client, auth_and_chat):
     user = _User(id=row["id"], email=row["email"], created_at=row["created_at"])
     token = create_access_token(user)
 
-    fake_llm = FakeChatModel(content="Hello world")
-
     with (
-        patch("app.llm._make_llm", return_value=fake_llm),
+        mock_llm(content="Hello world"),
         mock_title_llm("Test Title"),
     ):
         resp = await client.post(

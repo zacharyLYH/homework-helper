@@ -1,80 +1,84 @@
-from collections.abc import Sequence
-from typing import Any, AsyncIterator, Optional
+import json
 from unittest.mock import patch
 
-from langchain_core.callbacks import AsyncCallbackManagerForLLMRun, CallbackManagerForLLMRun
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, AIMessageChunk
-from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
-from pydantic import Field
+import httpx
+from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
 
 
-class FakeChatModel(BaseChatModel):
-    content: str = "Hello!"
-    _stream_done: bool = False
+def mock_llm(content: str = "Hello!", model: str = "gpt-4"):
+    """Patch _make_llm to return a real ChatOpenAI with a mocked HTTP transport.
 
-    def _generate(
-        self,
-        messages: list,
-        stop: Optional[list[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
-        **kwargs: Any,
-    ) -> ChatResult:
-        message = AIMessage(
-            content=self.content,
-            response_metadata={"model_name": "gpt-4"},
-            usage_metadata={"input_tokens": 15, "output_tokens": 5, "total_tokens": 20},
+    Only the HTTP call to the LLM provider is intercepted — all LangChain
+    and LangGraph plumbing runs for real.
+    """
+
+    async def _handler(request: httpx.Request) -> httpx.Response:
+        body = await request.aread()
+        req = json.loads(body) if body else {}
+        is_stream = req.get("stream", False)
+
+        if is_stream:
+            async def _sse_body():
+                words = content.split(" ")
+                for i, word in enumerate(words):
+                    suffix = " " if i < len(words) - 1 else ""
+                    yield _sse(json.dumps({
+                        "id": "chatcmpl-mock",
+                        "object": "chat.completion.chunk",
+                        "created": 1677652288,
+                        "model": model,
+                        "choices": [{"index": 0, "delta": {"content": word + suffix}, "finish_reason": None}],
+                    }))
+                yield _sse(json.dumps({
+                    "id": "chatcmpl-mock",
+                    "object": "chat.completion.chunk",
+                    "created": 1677652288,
+                    "model": model,
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                    "usage": {"prompt_tokens": 15, "completion_tokens": 5, "total_tokens": 20},
+                }))
+                yield b"data: [DONE]\n\n"
+
+            return httpx.Response(
+                200,
+                content=_sse_body(),
+                headers={"Content-Type": "text/event-stream"},
+            )
+
+        return httpx.Response(200, json={
+            "id": "chatcmpl-mock",
+            "object": "chat.completion",
+            "created": 1677652288,
+            "model": model,
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": content},
+                "finish_reason": "stop",
+            }],
+            "usage": {"prompt_tokens": 15, "completion_tokens": 5, "total_tokens": 20},
+        })
+
+    def _sse(data: str) -> bytes:
+        return f"data: {data}\n\n".encode()
+
+    transport = httpx.MockTransport(_handler)
+    http_async_client = httpx.AsyncClient(transport=transport)
+
+    def _make_mock_llm(model_name: str) -> ChatOpenAI:
+        return ChatOpenAI(
+            http_async_client=http_async_client,
+            api_key=SecretStr("sk-fake"),
+            model=model_name,
+            temperature=0.7,
+            max_completion_tokens=1024,
         )
-        return ChatResult(generations=[ChatGeneration(message=message)])
 
-    async def _astream(
-        self,
-        messages: list,
-        stop: Optional[list[str]] = None,
-        run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
-        **kwargs: Any,
-    ) -> AsyncIterator[ChatGenerationChunk]:
-        self._stream_done = False
-        words = self.content.split(" ")
-        for i, word in enumerate(words):
-            suffix = " " if i < len(words) - 1 else ""
-            chunk = AIMessageChunk(content=word + suffix)
-            if i == len(words) - 1:
-                chunk.response_metadata = {"model_name": "gpt-4"}
-                chunk.usage_metadata = {"input_tokens": 15, "output_tokens": 5, "total_tokens": 20}
-            yield ChatGenerationChunk(message=chunk)
-        self._stream_done = True
-
-    def bind_tools(self, tools: Sequence[Any], **kwargs: Any) -> "FakeChatModel":
-        return self
-
-    @property
-    def _llm_type(self) -> str:
-        return "fake-chat-model"
-
-
-class MockLLMResponse:
-    def __init__(self, content: str = "Hello!", model: str = "test-model"):
-        self.content = content
-        self.model = model
-
-
-def mock_stream_llm(responses: list[MockLLMResponse] | None = None):
-    if responses is None:
-        responses = [MockLLMResponse()]
-    call_count = 0
-
-    async def _mock_stream(messages, bind_tools=None, config=None):
-        nonlocal call_count
-        resp = responses[call_count % len(responses)]
-        call_count += 1
-        yield AIMessageChunk(content=resp.content), resp.model
-
-    return patch("app.graph.stream_llm", side_effect=_mock_stream)
+    return patch("app.llm._make_llm", side_effect=_make_mock_llm)
 
 
 def mock_title_llm(title: str = "Test Chat Title"):
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import MagicMock
 
     mock = MagicMock()
 
@@ -88,12 +92,8 @@ def mock_title_llm(title: str = "Test Chat Title"):
 
 
 def mock_email_send():
-    from unittest.mock import patch
-
     return patch("app.routes.auth.send_verification_email", return_value=True)
 
 
 def mock_email_send_failure():
-    from unittest.mock import patch
-
     return patch("app.routes.auth.send_verification_email", return_value=False)
