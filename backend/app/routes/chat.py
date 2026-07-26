@@ -114,7 +114,7 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
     sl = init_structured_logger(settings.structured_logging_pct)
     if sl:
         log.info("Structured logging ACTIVE for request: %s", thread_id)
-        structured_log("chat_request", message_length=len(req.message), chat_id=req.chat_id, thread_id=thread_id)
+        structured_log("chat_request", message=req.message, message_length=len(req.message), chat_id=req.chat_id, thread_id=thread_id, has_image=bool(req.image))
     else:
         log.info("Structured logging SKIPPED for request: %s", thread_id)
 
@@ -223,7 +223,7 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
 
         await graph_task
         _save_assistant_message(req.chat_id, full_reply, model_used, total_usage, tools_used=tools_used if tools_used else None)
-        structured_log("chat_response", model=model_used, usage=total_usage, tools_used=tools_used)
+        structured_log("chat_response", model=model_used, usage=total_usage, tools_used=tools_used, reply_length=len(full_reply), reply_preview=full_reply[:500])
         yield f"data: {json.dumps({'type': 'done', 'thread_id': thread_id, 'model': model_used, 'usage': total_usage})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
