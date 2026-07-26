@@ -370,7 +370,7 @@ Set in `backend/.env` (copied from `.env.example` by setup.sh):
 
 8. Local testing
 
-`python -m pytest tests/ -v`
+`uv run python -m pytest tests/ -n auto`
 
 #### Obtaining SMTP credentials
 
