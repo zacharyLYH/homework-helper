@@ -19,6 +19,15 @@ def auth(client, seed):
     return _login
 
 
+async def _login_as(client, email: str):
+    await client.post("/api/auth/request-code", json={"email": email})
+    with get_conn() as conn:
+        code = conn.execute(
+            "SELECT code FROM verification_codes WHERE email = ?", (email,)
+        ).fetchone()["code"]
+    await client.post("/api/auth/verify", json={"email": email, "code": code})
+
+
 async def test_list_subjects_empty(client, auth):
     await auth()
     resp = await client.get("/api/subjects")
@@ -154,3 +163,78 @@ async def test_delete_chat(client, auth):
         assert chat_row is None
         msg_rows = conn.execute("SELECT * FROM messages WHERE chat_id = ?", (chat_id,)).fetchall()
         assert len(msg_rows) == 0
+
+
+# ── sad / edge ───────────────────────────────────────────────────────
+
+
+async def test_subject_no_auth(client, seed):
+    seed(users=["alice@school.edu"])
+    assert (await client.get("/api/subjects")).status_code == 401
+    assert (await client.post("/api/subjects", params={"name": "Math"})).status_code == 401
+
+
+async def test_subject_not_found(client, seed):
+    seed(users=["alice@school.edu"])
+    await _login_as(client, "alice@school.edu")
+    assert (await client.delete("/api/subjects/9999")).status_code == 404
+
+
+async def test_subject_owned_by_other_user(client, seed):
+    seed(users=["alice@school.edu", "bob@school.edu"])
+    await _login_as(client, "alice@school.edu")
+    create = await client.post("/api/subjects", params={"name": "Math"})
+    subject_id = create.json()["id"]
+
+    client.cookies.clear()
+    await _login_as(client, "bob@school.edu")
+
+    assert (await client.get(f"/api/subjects")).json() == []
+    assert (await client.post("/api/chats", params={"subject_id": subject_id})).status_code == 404
+    assert (await client.get("/api/chats", params={"subject_id": subject_id})).status_code == 404
+    assert (await client.get(f"/api/chats/{9999}")).status_code == 404
+
+
+async def test_chat_no_auth(client, seed):
+    seed(users=["alice@school.edu"])
+    await _login_as(client, "alice@school.edu")
+    create = await client.post("/api/subjects", params={"name": "Math"})
+    subject_id = create.json()["id"]
+    chat = await client.post("/api/chats", params={"subject_id": subject_id})
+    chat_id = chat.json()["id"]
+
+    client.cookies.clear()
+    assert (await client.post("/api/chats", params={"subject_id": subject_id})).status_code == 401
+    assert (await client.get(f"/api/chats/{chat_id}")).status_code == 401
+    assert (await client.get(f"/api/chats/{chat_id}/messages")).status_code == 401
+    assert (await client.delete(f"/api/chats/{chat_id}")).status_code == 401
+
+
+async def test_chat_not_found(client, seed):
+    seed(users=["alice@school.edu"])
+    await _login_as(client, "alice@school.edu")
+    assert (await client.get("/api/chats/9999")).status_code == 404
+    assert (await client.get("/api/chats/9999/messages")).status_code == 404
+    assert (await client.delete("/api/chats/9999")).status_code == 404
+
+
+async def test_chat_nonexistent_subject(client, seed):
+    seed(users=["alice@school.edu"])
+    await _login_as(client, "alice@school.edu")
+    assert (await client.post("/api/chats", params={"subject_id": 9999})).status_code == 404
+
+
+async def test_chat_owned_by_other_user(client, seed):
+    seed(users=["alice@school.edu", "bob@school.edu"])
+    await _login_as(client, "alice@school.edu")
+    create = await client.post("/api/subjects", params={"name": "Math"})
+    subject_id = create.json()["id"]
+    chat = await client.post("/api/chats", params={"subject_id": subject_id})
+    chat_id = chat.json()["id"]
+
+    client.cookies.clear()
+    await _login_as(client, "bob@school.edu")
+
+    assert (await client.get(f"/api/chats/{chat_id}")).status_code == 404
+    assert (await client.get(f"/api/chats/{chat_id}/messages")).status_code == 404
+    assert (await client.delete(f"/api/chats/{chat_id}")).status_code == 404
