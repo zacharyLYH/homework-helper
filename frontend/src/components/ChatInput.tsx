@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from "react";
-import { Send, Paperclip, X, Quote } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Send, Paperclip, X, Quote, Sigma } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -23,6 +23,7 @@ import {
     ContextMenuItem,
 } from "@/components/ui/context-menu";
 import QuoteBlock from "./QuoteBlock";
+import MathEquationDialog from "./MathEquationDialog";
 
 interface ChatInputProps {
     onSubmit: (
@@ -55,6 +56,7 @@ export default function ChatInput({
     const [imageMediaType, setImageMediaType] = useState<string | null>(null);
     const [imageName, setImageName] = useState("");
     const [selPos, setSelPos] = useState<{ top: number; left: number } | null>(null);
+    const [mathDialogOpen, setMathDialogOpen] = useState(false);
     const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const textInputRef = useRef<HTMLTextAreaElement>(null);
@@ -127,6 +129,22 @@ export default function ChatInput({
         onSubmit(msg, image);
     };
 
+    const handleMathInsert = useCallback((latex: string) => {
+        const el = textInputRef.current;
+        if (!el) return;
+        const start = el.selectionStart ?? input.length;
+        const end = el.selectionEnd ?? input.length;
+        const before = input.slice(0, start);
+        const after = input.slice(end);
+        const newInput = before + latex + after;
+        setInput(newInput);
+        const cursorPos = start + latex.length;
+        requestAnimationFrame(() => {
+            el.focus();
+            el.setSelectionRange(cursorPos, cursorPos);
+        });
+    }, [input]);
+
     const handleQuote = () => {
         const text = window.getSelection()?.toString().trim();
         if (text) onQuote?.(text);
@@ -198,6 +216,21 @@ export default function ChatInput({
                                         </Button>
                                     </TooltipTrigger>
                                     <TooltipContent>Attach image</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => setMathDialogOpen(true)}
+                                            disabled={streaming || !selectedChatId}
+                                            className="cursor-pointer shrink-0 text-muted-foreground hover:text-foreground"
+                                        >
+                                            <Sigma className="h-4 w-4" />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Insert math equation</TooltipContent>
                                 </Tooltip>
                                 <Textarea
                                     ref={textInputRef}
@@ -297,6 +330,11 @@ export default function ChatInput({
                     </ContextMenuContent>
                 </ContextMenuPortal>
             )}
+            <MathEquationDialog
+                open={mathDialogOpen}
+                onOpenChange={setMathDialogOpen}
+                onInsert={handleMathInsert}
+            />
         </ContextMenu>
     );
 }

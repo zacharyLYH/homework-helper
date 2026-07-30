@@ -38,6 +38,15 @@ function CodeBlock({ className, children, ...props }: React.ComponentPropsWithou
   );
 }
 
+const sanitizeMath = (content: string) => {
+  return content
+    .replace(/\\n/g, "\n")
+    .replace(/\\\[/g, "$$")
+    .replace(/\\\]/g, "$$")
+    .replace(/\\\(/g, "$")
+    .replace(/\\\)/g, "$");
+};
+
 export default function MessageBubble({ msg, isStreaming, isLast, onRetry }: { msg: ChatMessage; isStreaming: boolean; isLast: boolean; onRetry?: () => void }) {
   const isUser = msg.role === "user";
 
@@ -78,7 +87,14 @@ export default function MessageBubble({ msg, isStreaming, isLast, onRetry }: { m
                     className="max-w-full max-h-48 rounded-lg mb-2"
                   />
                 )}
-                {msg.content}
+                <div className="prose prose-sm max-w-none">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                    rehypePlugins={[rehypeRaw, rehypeKatex]}
+                  >
+                    {sanitizeMath(msg.content)}
+                  </ReactMarkdown>
+                </div>
               </>
             ) : (
               <div className="prose prose-sm max-w-none dark:prose-invert">
@@ -91,7 +107,7 @@ export default function MessageBubble({ msg, isStreaming, isLast, onRetry }: { m
                     },
                   }}
                 >
-                  {msg.content.replace(/\\n/g, "\n")}
+                  {sanitizeMath(msg.content)}
                 </ReactMarkdown>
               </div>
             )}

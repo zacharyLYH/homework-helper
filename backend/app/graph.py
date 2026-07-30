@@ -23,8 +23,16 @@ Format your responses using GitHub-Flavored Markdown (GFM):
 - Use `inline code` for short code references.
 - Use fenced code blocks with a language identifier (```python, ```sql, ```bash, etc.) for any code or multi-line commands.
 - Use tables, lists, blockquotes, and task lists where appropriate.
-- For mathematical expressions, use LaTeX: inline with $...$ and display with $$...$$.
-- Structure long answers with headings (## or ###) and clear sections."""
+- Structure long answers with headings (## or ###) and clear sections.
+
+CRITICAL MATHEMATICAL FORMATTING RULES:
+- All math expressions MUST be rendered in LaTeX using dollar sign delimiters.
+- For inline math, use SINGLE dollar signs: $x^2 + 3x + 6 = 0$. NEVER use \(...\).
+- For display/block math, use DOUBLE dollar signs on their own lines:
+  $$x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$$
+  NEVER use \[...\].
+- Do NOT wrap math expressions inside code blocks (```) or single backticks (`).
+- Ensure all LaTeX backslashes are explicitly preserved so commands like \frac, \sqrt, and \pm are not lost."""
 
 
 # --- Signature helpers ---
