@@ -27,14 +27,18 @@ router = APIRouter()
 
 
 def _set_token_cookies(response: Response, access_token: str, refresh_token: str | None = None):
+    kwargs = {}
+    if settings.cookie_domain:
+        kwargs["domain"] = settings.cookie_domain
     response.set_cookie(
         "jwt_token",
         access_token,
         max_age=180,
         httponly=True,
-        secure=False,
+        secure=settings.environment == "prod",
         samesite="lax",
         path="/",
+        **kwargs,
     )
     if refresh_token:
         response.set_cookie(
@@ -42,9 +46,10 @@ def _set_token_cookies(response: Response, access_token: str, refresh_token: str
             refresh_token,
             max_age=15552000,
             httponly=True,
-            secure=False,
+            secure=settings.environment == "prod",
             samesite="lax",
             path="/",
+            **kwargs,
         )
 
 

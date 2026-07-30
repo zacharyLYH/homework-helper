@@ -241,7 +241,7 @@ export default function ChatPage() {
         onChatUpdated={(chatId, subjectId, title) => setChatsBySubject((prev) => ({ ...prev, [subjectId]: prev[subjectId].map((c) => c.id === chatId ? { ...c, title } : c) }))}
       />
       <SidebarInset className="flex flex-col bg-background h-svh overflow-hidden">
-        <ChatHeader email={user?.email} onDebug={() => navigate("/debug")} onLogout={handleLogout} />
+        <ChatHeader email={user?.email} onLogout={handleLogout} />
         <div className="flex flex-1 overflow-hidden">
           <ChatMessages selectedChatId={selectedChatId} messages={messages} streaming={streaming} toolCalls={toolCalls} onRetry={handleRetry} />
         </div>

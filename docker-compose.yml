@@ -16,3 +16,10 @@ services:
       - "80:80"
     depends_on:
       - backend
+
+  frontend-debug:
+    build: ./frontend-debug
+    ports:
+      - "81:80"
+    depends_on:
+      - backend

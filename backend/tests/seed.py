@@ -1,7 +1,9 @@
 INITIAL_SEED = """
 INSERT INTO users (id, email, created_at) VALUES
     (1, 'alice@school.edu', '2025-01-01T00:00:00'),
-    (2, 'bob@school.edu', '2025-01-01T00:00:00');
+    (2, 'bob@school.edu', '2025-01-01T00:00:00'),
+    (3, 'leeyihong03@gmail.com', '2025-01-01T00:00:00'),
+    (4, 'leeshihau@gmail.com', '2025-01-01T00:00:00');
 
 INSERT INTO subjects (id, user_id, name, created_at) VALUES
     (1, 1, 'Math', '2025-01-01T00:00:00'),

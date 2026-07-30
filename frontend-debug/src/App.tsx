@@ -2,7 +2,8 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "@/components/theme-provider";
 import LoginPage from "./pages/LoginPage";
-import ChatPage from "./pages/ChatPage";
+import DebugPage from "./pages/DebugPage";
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="flex items-center justify-center h-screen text-muted-foreground">Loading...</div>;
@@ -16,8 +17,8 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
-          <Route path="*" element={<Navigate to="/chat" replace />} />
+          <Route path="/debug" element={<ProtectedRoute><DebugPage /></ProtectedRoute>} />
+          <Route path="*" element={<Navigate to="/debug" replace />} />
         </Routes>
       </AuthProvider>
     </ThemeProvider>

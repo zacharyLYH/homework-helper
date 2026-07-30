@@ -15,7 +15,8 @@ import {
   type SqlResult,
   type StructuredLog,
 } from "@/lib/api";
-import { ArrowLeft, Play, ChevronRight, Database, Users, BookOpen, MessageSquare, RefreshCw, Activity, ChevronDown, ChevronUp } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { Play, ChevronRight, Database, Users, BookOpen, MessageSquare, RefreshCw, Activity, ChevronDown, ChevronUp, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -27,17 +28,27 @@ import { ModeToggle } from "@/components/mode-toggle";
 
 export default function DebugPage() {
   const navigate = useNavigate();
+  const { logout, user } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login");
+  };
 
   return (
     <div className="flex flex-col h-screen bg-background">
       <header className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/chat")} title="Back to chat">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
           <h1 className="text-lg font-semibold text-foreground">Debug Console</h1>
+          {user && (
+            <span className="text-xs text-muted-foreground">{user.email}</span>
+          )}
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={handleLogout}>
+            <LogOut className="h-4 w-4 mr-1" />
+            Logout
+          </Button>
           <ModeToggle />
         </div>
       </header>
