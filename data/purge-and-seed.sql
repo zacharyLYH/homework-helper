@@ -68,6 +68,7 @@ CREATE TABLE structured_logs (
 INSERT INTO users (email, refresh_token_expires_at) VALUES ('alice@school.edu', datetime('now', '+6 months'));
 INSERT INTO users (email, refresh_token_expires_at) VALUES ('bob@school.edu', datetime('now', '+6 months'));
 INSERT INTO users (email, refresh_token_expires_at) VALUES ('leeyihong03@gmail.com', datetime('now', '+6 months'));
+INSERT INTO users (email, refresh_token_expires_at) VALUES ('leeshihau@gmail.com', datetime('now', '+6 months'));
 
 INSERT INTO subjects (user_id, name) VALUES (1, 'AP Calculus BC');
 INSERT INTO subjects (user_id, name) VALUES (1, 'Physics C');
@@ -150,3 +151,29 @@ INSERT INTO messages (chat_id, role, content, metadata_json, token_count, quote)
 -- Chat 12: Sorting algorithms (Computer Science, just-solve)
 (12, 'user', 'Compare sorting algorithms', NULL, 0, NULL),
 (12, 'assistant', '| Algorithm | Best | Average | Worst | Space | Stable |\n|-----------|------|---------|-------|-------|--------|\n| Bubble | $O(n)$ | $O(n^2)$ | $O(n^2)$ | $O(1)$ | Yes |\n| Selection | $O(n^2)$ | $O(n^2)$ | $O(n^2)$ | $O(1)$ | No |\n| Insertion | $O(n)$ | $O(n^2)$ | $O(n^2)$ | $O(1)$ | Yes |\n| Merge | $O(n \\log n)$ | $O(n \\log n)$ | $O(n \\log n)$ | $O(n)$ | Yes |\n| Quick | $O(n \\log n)$ | $O(n \\log n)$ | $O(n^2)$ | $O(\\log n)$ | No |\n| Heap | $O(n \\log n)$ | $O(n \\log n)$ | $O(n \\log n)$ | $O(1)$ | No |\n\n> **Merge sort** is $O(n \\log n)$ guaranteed. **Quick sort** is faster in practice ($\\times 2$–$3\\times$) but has a worst-case $O(n^2)$.', '{"node":"cs","tool_calls":[{"name":"web_search","args":{"query":"sorting algorithms comparison time complexity"},"id":"seed_sort_1"}],"token_usage":{"input_tokens":40,"output_tokens":120,"total_tokens":160}}', 160, NULL);
+
+-- Duplicate leeyihong03's data for leeshihau (user_id=4)
+INSERT INTO subjects (id, user_id, name, created_at) VALUES
+    (8, 4, 'AP Biology', (SELECT created_at FROM subjects WHERE id=4)),
+    (9, 4, 'US History', (SELECT created_at FROM subjects WHERE id=5)),
+    (10, 4, 'AP Calculus AB', (SELECT created_at FROM subjects WHERE id=6)),
+    (11, 4, 'Computer Science', (SELECT created_at FROM subjects WHERE id=7));
+
+INSERT INTO chats (id, subject_id, user_id, title, total_tokens, input_tokens, output_tokens, created_at, updated_at) VALUES
+    (13, 8, 4, 'Cell division', 490, 210, 280, (SELECT created_at FROM chats WHERE id=5), (SELECT updated_at FROM chats WHERE id=5)),
+    (14, 8, 4, 'Meiosis vs Mitosis', 150, 60, 90, (SELECT created_at FROM chats WHERE id=6), (SELECT updated_at FROM chats WHERE id=6)),
+    (15, 9, 4, 'Civil War causes', 440, 180, 260, (SELECT created_at FROM chats WHERE id=7), (SELECT updated_at FROM chats WHERE id=7)),
+    (16, 9, 4, 'Reconstruction', 220, 90, 130, (SELECT created_at FROM chats WHERE id=8), (SELECT updated_at FROM chats WHERE id=8)),
+    (17, 10, 4, 'Limits & continuity', 320, 130, 190, (SELECT created_at FROM chats WHERE id=9), (SELECT updated_at FROM chats WHERE id=9)),
+    (18, 10, 4, 'Derivative practice', 240, 100, 140, (SELECT created_at FROM chats WHERE id=10), (SELECT updated_at FROM chats WHERE id=10)),
+    (19, 11, 4, 'Binary trees', 390, 160, 230, (SELECT created_at FROM chats WHERE id=11), (SELECT updated_at FROM chats WHERE id=11)),
+    (20, 11, 4, 'Sorting algorithms', 210, 90, 120, (SELECT created_at FROM chats WHERE id=12), (SELECT updated_at FROM chats WHERE id=12));
+
+INSERT INTO messages (chat_id, role, content, metadata_json, token_count, quote, created_at)
+SELECT
+  CASE chat_id
+    WHEN 5 THEN 13 WHEN 6 THEN 14 WHEN 7 THEN 15 WHEN 8 THEN 16
+    WHEN 9 THEN 17 WHEN 10 THEN 18 WHEN 11 THEN 19 WHEN 12 THEN 20
+  END,
+  role, content, metadata_json, token_count, quote, created_at
+FROM messages WHERE chat_id IN (5,6,7,8,9,10,11,12);
