@@ -171,7 +171,6 @@ export interface Chat {
   id: number;
   subject_id: number;
   user_id: number;
-  mode: string;
   title: string;
   total_tokens: number;
   input_tokens: number;
@@ -192,7 +191,6 @@ export interface Message {
   token_count: number;
   created_at: string;
   chat_title?: string;
-  chat_mode?: string;
   subject_name?: string;
   user_email?: string;
 }
@@ -232,6 +230,18 @@ export async function createSubject(name: string): Promise<Subject> {
   return res.json();
 }
 
+export async function updateSubject(subjectId: number, name: string): Promise<Subject> {
+  const res = await fetch(`${API_BASE}/subjects/${subjectId}?name=${encodeURIComponent(name)}`, {
+    method: "PATCH",
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to update subject");
+  }
+  return res.json();
+}
+
 export async function deleteSubject(subjectId: number): Promise<void> {
   const res = await fetch(`${API_BASE}/subjects/${subjectId}`, {
     method: "DELETE",
@@ -246,10 +256,9 @@ export async function getChats(subjectId: number): Promise<Chat[]> {
   return res.json();
 }
 
-export async function createChat(subjectId: number, mode: string = "guide", title: string = "New Chat"): Promise<Chat> {
+export async function createChat(subjectId: number, title: string = "New Chat"): Promise<Chat> {
   const params = new URLSearchParams();
   params.set("subject_id", String(subjectId));
-  params.set("mode", mode);
   params.set("title", title);
   const res = await fetch(`${API_BASE}/chats?${params.toString()}`, {
     method: "POST",
@@ -262,6 +271,18 @@ export async function createChat(subjectId: number, mode: string = "guide", titl
 export async function getChat(chatId: number): Promise<Chat> {
   const res = await fetch(`${API_BASE}/chats/${chatId}`, { credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch chat");
+  return res.json();
+}
+
+export async function updateChatTitle(chatId: number, title: string): Promise<Chat> {
+  const res = await fetch(`${API_BASE}/chats/${chatId}?title=${encodeURIComponent(title)}`, {
+    method: "PATCH",
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to update chat");
+  }
   return res.json();
 }
 

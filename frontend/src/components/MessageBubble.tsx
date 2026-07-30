@@ -7,13 +7,25 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import QuoteBlock from "./QuoteBlock";
-import { Message, MessageContent, MessageFooter } from "@/components/ui/message";
+import {
+  Message,
+  MessageContent,
+  MessageFooter,
+} from "@/components/ui/message";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import type { ChatMessage } from "@/lib/api";
 
-function CodeBlock({ className, children, ...props }: React.ComponentPropsWithoutRef<"code">) {
+function CodeBlock({
+  className,
+  children,
+  ...props
+}: React.ComponentPropsWithoutRef<"code">) {
   const [copied, setCopied] = useState(false);
   const code = String(children).replace(/\n$/, "");
 
@@ -27,12 +39,21 @@ function CodeBlock({ className, children, ...props }: React.ComponentPropsWithou
     <div className="relative group">
       <div className="flex items-center justify-between rounded-t-lg bg-zinc-800 px-4 py-1.5 text-xs text-zinc-400">
         <span>{className?.replace("language-", "") || "code"}</span>
-        <button onClick={handleCopy} className="hover:text-zinc-200 transition-colors">
-          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        <button
+          onClick={handleCopy}
+          className="hover:text-zinc-200 transition-colors"
+        >
+          {copied ? (
+            <Check className="h-3.5 w-3.5" />
+          ) : (
+            <Copy className="h-3.5 w-3.5" />
+          )}
         </button>
       </div>
       <pre className="overflow-x-auto rounded-b-lg bg-zinc-900 p-4 text-sm leading-relaxed">
-        <code className={className} {...props}>{children}</code>
+        <code className={className} {...props}>
+          {children}
+        </code>
       </pre>
     </div>
   );
@@ -47,7 +68,17 @@ const sanitizeMath = (content: string) => {
     .replace(/\\\)/g, "$");
 };
 
-export default function MessageBubble({ msg, isStreaming, isLast, onRetry }: { msg: ChatMessage; isStreaming: boolean; isLast: boolean; onRetry?: () => void }) {
+export default function MessageBubble({
+  msg,
+  isStreaming,
+  isLast,
+  onRetry,
+}: {
+  msg: ChatMessage;
+  isStreaming: boolean;
+  isLast: boolean;
+  onRetry?: () => void;
+}) {
   const isUser = msg.role === "user";
 
   if (!isUser && !msg.content && isStreaming && isLast) {
@@ -57,9 +88,18 @@ export default function MessageBubble({ msg, isStreaming, isLast, onRetry }: { m
           <Bubble variant="muted">
             <BubbleContent>
               <span className="flex items-center gap-1 py-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce" style={{ animationDelay: "300ms" }} />
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce"
+                  style={{ animationDelay: "0ms" }}
+                />
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce"
+                  style={{ animationDelay: "150ms" }}
+                />
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce"
+                  style={{ animationDelay: "300ms" }}
+                />
               </span>
             </BubbleContent>
           </Bubble>
@@ -87,7 +127,16 @@ export default function MessageBubble({ msg, isStreaming, isLast, onRetry }: { m
                     className="max-w-full max-h-48 rounded-lg mb-2"
                   />
                 )}
-                <div className="prose prose-sm max-w-none">
+                <div
+                  className="prose prose-sm max-w-none dark:prose-invert"
+                  style={
+                    {
+                      "--tw-prose-body": "var(--primary-foreground)",
+                      "--tw-prose-headings": "var(--primary-foreground)",
+                      "--tw-prose-bold": "var(--primary-foreground)",
+                    } as React.CSSProperties
+                  }
+                >
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm, remarkMath]}
                     rehypePlugins={[rehypeRaw, rehypeKatex]}
@@ -97,13 +146,26 @@ export default function MessageBubble({ msg, isStreaming, isLast, onRetry }: { m
                 </div>
               </>
             ) : (
-              <div className="prose prose-sm max-w-none dark:prose-invert">
+              <div
+                className="prose prose-sm max-w-none dark:prose-invert"
+                style={
+                  {
+                    "--tw-prose-body": "var(--foreground)",
+                    "--tw-prose-headings": "var(--foreground)",
+                    "--tw-prose-bold": "var(--foreground)",
+                  } as React.CSSProperties
+                }
+              >
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm, remarkMath]}
                   rehypePlugins={[rehypeRaw, rehypeKatex]}
                   components={{
                     code({ className, children, ...props }) {
-                      return <CodeBlock className={className} {...props}>{children}</CodeBlock>;
+                      return (
+                        <CodeBlock className={className} {...props}>
+                          {children}
+                        </CodeBlock>
+                      );
                     },
                   }}
                 >
@@ -116,7 +178,12 @@ export default function MessageBubble({ msg, isStreaming, isLast, onRetry }: { m
         <MessageFooter>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-xs" onClick={() => navigator.clipboard.writeText(msg.content)} className="cursor-pointer">
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={() => navigator.clipboard.writeText(msg.content)}
+                className="cursor-pointer"
+              >
                 <Copy />
               </Button>
             </TooltipTrigger>
@@ -125,7 +192,12 @@ export default function MessageBubble({ msg, isStreaming, isLast, onRetry }: { m
           {!(isStreaming && isLast) && onRetry && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon-xs" onClick={onRetry} className="cursor-pointer">
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={onRetry}
+                  className="cursor-pointer"
+                >
                   <RefreshCw />
                 </Button>
               </TooltipTrigger>

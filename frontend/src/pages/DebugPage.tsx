@@ -139,9 +139,6 @@ function DebugTreeView({
                         >
                           <MessageSquare className="h-3 w-3 text-muted-foreground shrink-0 mr-2" />
                           <span className="truncate">{chat.title}</span>
-                          <span className="ml-auto text-[10px] text-muted-foreground shrink-0">
-                            {chat.mode}
-                          </span>
                         </Button>
                       ))}
                     </div>
@@ -372,14 +369,6 @@ function BrowserPanel() {
                     <div className="flex items-center gap-2">
                       <MessageSquare className="h-4 w-4 text-muted-foreground" />
                       <span className="text-sm font-medium text-foreground">{c.title}</span>
-                      <Badge
-                        variant="outline"
-                        className={`ml-auto ${
-                          c.mode === "guide" ? "border-amber-500/50 text-amber-500" : "border-violet-500/50 text-violet-500"
-                        }`}
-                      >
-                        {c.mode}
-                      </Badge>
                     </div>
                     <div className="text-xs text-muted-foreground mt-1">
                       ID {c.id} · created {c.created_at}
@@ -595,7 +584,6 @@ function WaterfallTrace({ logs, message }: { logs: StructuredLog[]; message: Mes
         {message.subject_name && <span className="text-foreground/60">{message.subject_name}</span>}
         {message.chat_title && <span className="truncate text-foreground/60">{message.chat_title}</span>}
         {message.user_email && <span className="text-foreground/40">{message.user_email}</span>}
-        {message.chat_mode && <span className="uppercase text-[9px] text-foreground/40">{message.chat_mode}</span>}
         <span className="truncate ml-auto text-foreground/60">{message.content.slice(0, 100)}</span>
       </div>
 
@@ -765,7 +753,6 @@ function TracePanel() {
               <div className="flex items-center gap-2 text-[9px] text-muted-foreground/60">
                 {msg.chat_title && <span className="truncate">{msg.chat_title}</span>}
                 {msg.user_email && <span className="truncate">{msg.user_email}</span>}
-                {msg.chat_mode && <span>{msg.chat_mode}</span>}
               </div>
             </button>
           ))}

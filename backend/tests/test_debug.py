@@ -97,8 +97,8 @@ def _seed_one_message_with_log():
         conn.executescript("""
             INSERT INTO users (id, email, created_at) VALUES (10, 'trace@test.com', '2025-01-01T00:00:00');
             INSERT INTO subjects (id, user_id, name, created_at) VALUES (10, 10, 'Test Subject', '2025-01-01T00:00:00');
-            INSERT INTO chats (id, subject_id, user_id, mode, title, created_at, updated_at) VALUES
-                (10, 10, 10, 'guide', 'Test Chat', '2025-01-01T00:00:00', '2025-01-01T00:00:00');
+            INSERT INTO chats (id, subject_id, user_id, title, created_at, updated_at) VALUES
+                (10, 10, 10, 'Test Chat', '2025-01-01T00:00:00', '2025-01-01T00:00:00');
             INSERT INTO messages (id, chat_id, role, content, token_count, created_at) VALUES
                 (100, 10, 'user', 'hello world', 2, '2025-01-01T00:00:00');
             INSERT INTO structured_logs (type, created_at, message_id, log, _req_id) VALUES
@@ -119,7 +119,6 @@ async def test_traces_happy(client, seed):
     assert entry["content"] == "hello world"
     assert entry["role"] == "user"
     assert entry["chat_title"] == "Test Chat"
-    assert entry["chat_mode"] == "guide"
     assert entry["subject_name"] == "Test Subject"
     assert entry["user_email"] == "trace@test.com"
 
@@ -159,7 +158,6 @@ async def test_traces_sad_no_join_data(client, seed):
     assert len(data) == 1
     entry = data[0]
     assert entry["chat_title"] is None
-    assert entry["chat_mode"] is None
     assert entry["subject_name"] is None
     assert entry["user_email"] is None
 

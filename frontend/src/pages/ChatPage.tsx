@@ -237,6 +237,8 @@ export default function ChatPage() {
         onChatCreated={handleChatCreated}
         onSubjectCreated={handleSubjectCreated}
         onClearChat={handleClearChat}
+        onSubjectUpdated={(updated) => setSubjects((prev) => prev.map((s) => s.id === updated.id ? updated : s))}
+        onChatUpdated={(chatId, subjectId, title) => setChatsBySubject((prev) => ({ ...prev, [subjectId]: prev[subjectId].map((c) => c.id === chatId ? { ...c, title } : c) }))}
       />
       <SidebarInset className="flex flex-col bg-background h-svh overflow-hidden">
         <ChatHeader email={user?.email} onDebug={() => navigate("/debug")} onLogout={handleLogout} />

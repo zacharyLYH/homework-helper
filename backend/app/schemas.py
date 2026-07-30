@@ -79,7 +79,6 @@ class Chat(BaseModel):
     id: int
     subject_id: int
     user_id: int
-    mode: str
     title: str
     total_tokens: int = 0
     input_tokens: int = 0

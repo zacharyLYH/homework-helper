@@ -25,7 +25,6 @@ CREATE TABLE chats (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     subject_id INTEGER NOT NULL,
     user_id INTEGER NOT NULL,
-    mode TEXT NOT NULL CHECK(mode IN ('guide', 'just-solve')),
     title TEXT NOT NULL DEFAULT 'New Chat',
     total_tokens INTEGER NOT NULL DEFAULT 0,
     input_tokens INTEGER NOT NULL DEFAULT 0,
@@ -74,10 +73,10 @@ INSERT INTO subjects (user_id, name) VALUES (1, 'AP Calculus BC');
 INSERT INTO subjects (user_id, name) VALUES (1, 'Physics C');
 INSERT INTO subjects (user_id, name) VALUES (2, 'Organic Chemistry');
 
-INSERT INTO chats (subject_id, user_id, mode, title, input_tokens, output_tokens, total_tokens) VALUES (1, 1, 'guide', 'Derivatives help', 130, 105, 235);
-INSERT INTO chats (subject_id, user_id, mode, title, input_tokens, output_tokens, total_tokens) VALUES (1, 1, 'just-solve', 'Integration by parts', 60, 70, 130);
-INSERT INTO chats (subject_id, user_id, mode, title, input_tokens, output_tokens, total_tokens) VALUES (2, 1, 'guide', 'Kinematics', 55, 50, 105);
-INSERT INTO chats (subject_id, user_id, mode, title, input_tokens, output_tokens, total_tokens) VALUES (3, 2, 'just-solve', 'SN1 vs SN2', 45, 65, 110);
+INSERT INTO chats (subject_id, user_id, title, input_tokens, output_tokens, total_tokens) VALUES (1, 1, 'Derivatives help', 130, 105, 235);
+INSERT INTO chats (subject_id, user_id, title, input_tokens, output_tokens, total_tokens) VALUES (1, 1, 'Integration by parts', 60, 70, 130);
+INSERT INTO chats (subject_id, user_id, title, input_tokens, output_tokens, total_tokens) VALUES (2, 1, 'Kinematics', 55, 50, 105);
+INSERT INTO chats (subject_id, user_id, title, input_tokens, output_tokens, total_tokens) VALUES (3, 2, 'SN1 vs SN2', 45, 65, 110);
 
 INSERT INTO messages (chat_id, role, content, metadata_json, token_count, quote) VALUES
 (1, 'user', 'What is the chain rule?', NULL, 0, NULL),
@@ -96,14 +95,14 @@ INSERT INTO subjects (user_id, name) VALUES (3, 'US History');
 INSERT INTO subjects (user_id, name) VALUES (3, 'AP Calculus AB');
 INSERT INTO subjects (user_id, name) VALUES (3, 'Computer Science');
 
-INSERT INTO chats (subject_id, user_id, mode, title, input_tokens, output_tokens, total_tokens) VALUES (4, 3, 'guide', 'Cell division', 210, 280, 490);
-INSERT INTO chats (subject_id, user_id, mode, title, input_tokens, output_tokens, total_tokens) VALUES (4, 3, 'just-solve', 'Meiosis vs Mitosis', 60, 90, 150);
-INSERT INTO chats (subject_id, user_id, mode, title, input_tokens, output_tokens, total_tokens) VALUES (5, 3, 'guide', 'Civil War causes', 180, 260, 440);
-INSERT INTO chats (subject_id, user_id, mode, title, input_tokens, output_tokens, total_tokens) VALUES (5, 3, 'just-solve', 'Reconstruction', 90, 130, 220);
-INSERT INTO chats (subject_id, user_id, mode, title, input_tokens, output_tokens, total_tokens) VALUES (6, 3, 'guide', 'Limits & continuity', 130, 190, 320);
-INSERT INTO chats (subject_id, user_id, mode, title, input_tokens, output_tokens, total_tokens) VALUES (6, 3, 'just-solve', 'Derivative practice', 100, 140, 240);
-INSERT INTO chats (subject_id, user_id, mode, title, input_tokens, output_tokens, total_tokens) VALUES (7, 3, 'guide', 'Binary trees', 160, 230, 390);
-INSERT INTO chats (subject_id, user_id, mode, title, input_tokens, output_tokens, total_tokens) VALUES (7, 3, 'just-solve', 'Sorting algorithms', 90, 120, 210);
+INSERT INTO chats (subject_id, user_id, title, input_tokens, output_tokens, total_tokens) VALUES (4, 3, 'Cell division', 210, 280, 490);
+INSERT INTO chats (subject_id, user_id, title, input_tokens, output_tokens, total_tokens) VALUES (4, 3, 'Meiosis vs Mitosis', 60, 90, 150);
+INSERT INTO chats (subject_id, user_id, title, input_tokens, output_tokens, total_tokens) VALUES (5, 3, 'Civil War causes', 180, 260, 440);
+INSERT INTO chats (subject_id, user_id, title, input_tokens, output_tokens, total_tokens) VALUES (5, 3, 'Reconstruction', 90, 130, 220);
+INSERT INTO chats (subject_id, user_id, title, input_tokens, output_tokens, total_tokens) VALUES (6, 3, 'Limits & continuity', 130, 190, 320);
+INSERT INTO chats (subject_id, user_id, title, input_tokens, output_tokens, total_tokens) VALUES (6, 3, 'Derivative practice', 100, 140, 240);
+INSERT INTO chats (subject_id, user_id, title, input_tokens, output_tokens, total_tokens) VALUES (7, 3, 'Binary trees', 160, 230, 390);
+INSERT INTO chats (subject_id, user_id, title, input_tokens, output_tokens, total_tokens) VALUES (7, 3, 'Sorting algorithms', 90, 120, 210);
 
 INSERT INTO messages (chat_id, role, content, metadata_json, token_count, quote) VALUES
 -- Chat 5: Cell division (AP Biology, guide)

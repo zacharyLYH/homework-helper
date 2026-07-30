@@ -34,7 +34,7 @@ def auth_and_chat(client, seed):
         await client.post("/api/auth/verify", json={"email": "alice@school.edu", "code": code})
         subject_resp = await client.post("/api/subjects", params={"name": "Math"})
         subject_id = subject_resp.json()["id"]
-        chat_resp = await client.post("/api/chats", params={"subject_id": subject_id, "mode": "guide"})
+        chat_resp = await client.post("/api/chats", params={"subject_id": subject_id})
         chat_id = chat_resp.json()["id"]
         return chat_id
 

@@ -11,6 +11,8 @@ from app.db import (
     get_subject,
     list_chats,
     list_subjects_with_chat_metadata,
+    update_chat_title,
+    update_subject_name,
 )
 from app.logging import get_logger
 from app.schemas import Chat, Subject, User
@@ -52,6 +54,17 @@ async def create_subject_route(name: str, user: User = Depends(get_current_user)
     return create_subject(user.id, name)
 
 
+@router.patch("/api/subjects/{subject_id}", response_model=Subject)
+async def update_subject_route(subject_id: int, name: str, user: User = Depends(get_current_user)):
+    _get_owned_subject(subject_id, user.id)
+    if not name.strip():
+        raise HTTPException(status_code=400, detail="Name cannot be empty")
+    updated = update_subject_name(subject_id, user.id, name.strip())
+    if not updated:
+        raise HTTPException(status_code=409, detail="A subject with this name already exists")
+    return updated
+
+
 @router.delete("/api/subjects/{subject_id}")
 async def delete_subject_route(subject_id: int, user: User = Depends(get_current_user)):
     _get_owned_subject(subject_id, user.id)
@@ -71,12 +84,11 @@ async def get_chats(subject_id: int = Query(...), user: User = Depends(get_curre
 @router.post("/api/chats", response_model=Chat)
 async def create_chat_route(
     subject_id: int,
-    mode: str = "guide",
     title: str = "New Chat",
     user: User = Depends(get_current_user),
 ):
     _get_owned_subject(subject_id, user.id)
-    return create_chat(subject_id, user.id, mode, title)
+    return create_chat(subject_id, user.id, title)
 
 
 @router.get("/api/chats/{chat_id}")
@@ -88,6 +100,17 @@ async def get_chat_route(chat_id: int, user: User = Depends(get_current_user)):
 async def get_chat_messages(chat_id: int, user: User = Depends(get_current_user)):
     _get_owned_chat(chat_id, user.id)
     return get_messages(chat_id)
+
+
+@router.patch("/api/chats/{chat_id}", response_model=Chat)
+async def update_chat_route(chat_id: int, title: str, user: User = Depends(get_current_user)):
+    _get_owned_chat(chat_id, user.id)
+    if not title.strip():
+        raise HTTPException(status_code=400, detail="Title cannot be empty")
+    updated = update_chat_title(chat_id, title.strip())
+    if not updated:
+        raise HTTPException(status_code=409, detail="A chat with this title already exists in this subject")
+    return updated
 
 
 @router.delete("/api/chats/{chat_id}")

@@ -18,7 +18,6 @@ this project is specifically for helping users with learn subjects with determin
 - **memory file**: a markdown file with yaml frontmatter. one file per subject, topic, and concept. captures strengths, weaknesses, and observations.
 - **memory index**: a single yaml file listing all known subject→topic→concept paths. used by the llm to find the right memory file before responding. if no matching concept exists, the ai creates a new concept file and adds it to the index.
 - **version**: every memory file update creates a new immutable version row. we never overwrite or delete memory files. this lets us build an evolution graph for evaluation.
-- **mode**: per chat, set at conversation start. two modes: guide (ai walks the user through the problem) and just-solve (ai gives the answer with explanation). cannot be toggled mid-conversation.
 - **api key**: user-provided. stored in sqlite. if missing, the ui blocks the user from proceeding. even if they bypass the ui, the backend will reject requests due to missing key.
 - **openrouter api key**: optional. used for cheap/free model calls for background tasks like chat title generation. stored in sqlite alongside the primary api key. if missing, fall back to heuristic titles (e.g., first 30 chars of first message).
 
@@ -26,7 +25,7 @@ this project is specifically for helping users with learn subjects with determin
 
 1. user opens the app. if no api key is stored, the ui forces them to enter one before proceeding. they may optionally provide an openrouter api key for cheap background tasks.
 2. user creates a new subject (e.g., "ap calculus bc").
-3. user starts a new chat under that subject. at chat creation, they choose guide or just-solve mode.
+3. user starts a new chat under that subject.
 4. user asks questions by typing or taking a picture (base64 image upload). no assignment file uploads.
 5. backend routes the message through the langgraph graph.
 6. before the first reply in a turn, the background ai loads the relevant memory files (subject → topic → concept) based on the memory index.
@@ -59,7 +58,6 @@ this project is specifically for helping users with learn subjects with determin
 - id
 - subject_id (foreign key to subjects)
 - user_id (foreign key to users)
-- mode: enum ("guide", "just-solve")
 - title (ai-generated)
 - created_at
 - updated_at
@@ -139,7 +137,6 @@ the ai loads this index into context, picks the closest matching path, loads tha
 class GraphState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
     category: str
-    mode: str  # "guide" | "just-solve"
     memory_context: str  # loaded memory files injected here
     subject_id: str
     user_id: str
@@ -149,19 +146,18 @@ class GraphState(TypedDict):
 
 1. **router**: classifies the latest message and routes to the appropriate subject/expert node. also responsible for triggering memory load.
 2. **memory_loader** (new): reads the memory index, finds relevant files, injects them into `memory_context`. runs before the first reply of a turn.
-3. **guide_mode_responder**: walks the user through the problem step by step. does not give the final answer up front.
-4. **just_solve_mode_responder**: solves the problem directly with a clear explanation.
-5. **memory_updater** (new): after every response, decides whether any memory file needs updating. if yes, creates a new version row and updates the index if a new concept was created. must be highly selective.
-6. **tool_executor**: runs any tools the model calls (calculator, etc.).
+3. **responder**: walks the user through the problem step by step. does not give the final answer up front.
+4. **memory_updater** (new): after every response, decides whether any memory file needs updating. if yes, creates a new version row and updates the index if a new concept was created. must be highly selective.
+5. **tool_executor**: runs any tools the model calls (calculator, etc.).
 
 ### edges
 
 - START → router
 - router → memory_loader (always, first turn)
-- memory_loader → mode_responder
-- mode_responder → tool_executor (if tool calls)
+- memory_loader → responder
+- responder → tool_executor (if tool calls)
 - tool_executor → memory_updater
-- mode_responder → memory_updater (if no tool calls)
+- responder → memory_updater (if no tool calls)
 - memory_updater → END
 
 ### hooks (contract for memory integration)
@@ -197,7 +193,7 @@ two extension points in the graph allow memory nodes to be registered without mo
 - `DELETE /api/subjects/{id}` — delete subject (cascade or restrict if chats exist)
 
 **chats**
-- `POST /api/subjects/{subject_id}/chats` — create chat (requires mode: guide | just-solve)
+- `POST /api/chats` — create chat
 - `GET /api/subjects/{subject_id}/chats` — list chats for subject
 - `GET /api/chats/{chat_id}` — get chat details + message history
 - `DELETE /api/chats/{chat_id}` — delete chat

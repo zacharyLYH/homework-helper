@@ -55,10 +55,10 @@ def seed(setup_test_db):
                     conn.execute("INSERT INTO subjects (user_id, name) VALUES (?, ?)", (user_id, name))
         if chats:
             with get_conn() as conn:
-                for subject_id, user_id, mode, title in chats:
+                for subject_id, user_id, title in chats:
                     conn.execute(
-                        "INSERT INTO chats (subject_id, user_id, mode, title) VALUES (?, ?, ?, ?)",
-                        (subject_id, user_id, mode, title),
+                        "INSERT INTO chats (subject_id, user_id, title) VALUES (?, ?, ?)",
+                        (subject_id, user_id, title),
                     )
 
     return _seed

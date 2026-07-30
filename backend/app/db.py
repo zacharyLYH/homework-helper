@@ -40,7 +40,7 @@ def _row_to_subject(row) -> Subject:
 def _row_to_chat(row) -> Chat:
     return Chat(
         id=row["id"], subject_id=row["subject_id"], user_id=row["user_id"],
-        mode=row["mode"], title=row["title"],
+        title=row["title"],
         total_tokens=row["total_tokens"], input_tokens=row["input_tokens"],
         output_tokens=row["output_tokens"],
         created_at=_parse_dt(row["created_at"]), updated_at=_parse_dt(row["updated_at"]),
@@ -97,7 +97,6 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 subject_id INTEGER NOT NULL,
                 user_id INTEGER NOT NULL,
-                mode TEXT NOT NULL CHECK(mode IN ('guide', 'just-solve')),
                 title TEXT NOT NULL DEFAULT 'New Chat',
                 total_tokens INTEGER NOT NULL DEFAULT 0,
                 input_tokens INTEGER NOT NULL DEFAULT 0,
@@ -138,14 +137,6 @@ def init_db():
                 _req_id TEXT NOT NULL
             );
         """)
-        try:
-            conn.execute("ALTER TABLE structured_logs ADD COLUMN _req_id TEXT NOT NULL DEFAULT ''")
-        except sqlite3.OperationalError:
-            pass  # column already exists
-        try:
-            conn.execute("ALTER TABLE messages ADD COLUMN quote TEXT")
-        except sqlite3.OperationalError:
-            pass  # column already exists
     log.info("Database initialized")
 
 
@@ -221,19 +212,33 @@ def delete_subject(subject_id: int) -> bool:
         return cur.rowcount > 0
 
 
+def update_subject_name(subject_id: int, user_id: int, name: str) -> Optional[Subject]:
+    with get_conn() as conn:
+        existing = conn.execute(
+            "SELECT id FROM subjects WHERE user_id = ? AND name = ? AND id != ?",
+            (user_id, name, subject_id),
+        ).fetchone()
+        if existing:
+            return None
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute("UPDATE subjects SET name = ?, created_at = ? WHERE id = ?", (name, now, subject_id))
+        row = conn.execute("SELECT * FROM subjects WHERE id = ?", (subject_id,)).fetchone()
+        return _row_to_subject(row) if row else None
+
+
 # --- Chat operations ---
 
 
-def create_chat(subject_id: int, user_id: int, mode: str, title: str = "New Chat") -> Chat:
+def create_chat(subject_id: int, user_id: int, title: str = "New Chat") -> Chat:
     with get_conn() as conn:
         now = datetime.now(timezone.utc).isoformat()
         cur = conn.execute(
-            "INSERT INTO chats (subject_id, user_id, mode, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (subject_id, user_id, mode, title, now, now),
+            "INSERT INTO chats (subject_id, user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            (subject_id, user_id, title, now, now),
         )
         assert cur.lastrowid is not None
         dt = _parse_dt(now)
-        return Chat(id=cur.lastrowid, subject_id=subject_id, user_id=user_id, mode=mode, title=title, created_at=dt, updated_at=dt)
+        return Chat(id=cur.lastrowid, subject_id=subject_id, user_id=user_id, title=title, created_at=dt, updated_at=dt)
 
 
 def list_chats(subject_id: int) -> list[Chat]:
@@ -276,6 +281,15 @@ def get_messages(chat_id: int) -> list[Message]:
 
 def update_chat_title(chat_id: int, title: str) -> Optional[Chat]:
     with get_conn() as conn:
+        chat = conn.execute("SELECT subject_id FROM chats WHERE id = ?", (chat_id,)).fetchone()
+        if not chat:
+            return None
+        existing = conn.execute(
+            "SELECT id FROM chats WHERE subject_id = ? AND title = ? AND id != ?",
+            (chat["subject_id"], title, chat_id),
+        ).fetchone()
+        if existing:
+            return None
         now = datetime.now(timezone.utc).isoformat()
         conn.execute("UPDATE chats SET title = ?, updated_at = ? WHERE id = ?", (title, now, chat_id))
         row = conn.execute("SELECT * FROM chats WHERE id = ?", (chat_id,)).fetchone()
@@ -285,7 +299,7 @@ def update_chat_title(chat_id: int, title: str) -> Optional[Chat]:
 def list_messages_with_logs() -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute("""
-            SELECT DISTINCT m.*, c.title AS chat_title, c.mode AS chat_mode,
+            SELECT DISTINCT m.*, c.title AS chat_title,
                   s.name AS subject_name, u.email AS user_email
             FROM messages m
             INNER JOIN structured_logs sl ON sl.message_id = m.id

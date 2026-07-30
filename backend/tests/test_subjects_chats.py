@@ -86,18 +86,16 @@ async def test_create_chat(client, auth):
     subject_resp = await client.post("/api/subjects", params={"name": "Math"})
     subject_id = subject_resp.json()["id"]
 
-    resp = await client.post("/api/chats", params={"subject_id": subject_id, "mode": "guide", "title": "Algebra"})
+    resp = await client.post("/api/chats", params={"subject_id": subject_id, "title": "Algebra"})
     assert resp.status_code == 200
     data = resp.json()
     assert data["subject_id"] == subject_id
-    assert data["mode"] == "guide"
     assert data["title"] == "Algebra"
 
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM chats WHERE id = ?", (data["id"],)).fetchone()
         assert row is not None
         assert row["subject_id"] == subject_id
-        assert row["mode"] == "guide"
         assert row["title"] == "Algebra"
 
 
@@ -105,8 +103,8 @@ async def test_list_chats(client, auth):
     await auth()
     subject_resp = await client.post("/api/subjects", params={"name": "Math"})
     subject_id = subject_resp.json()["id"]
-    await client.post("/api/chats", params={"subject_id": subject_id, "mode": "guide", "title": "Algebra"})
-    await client.post("/api/chats", params={"subject_id": subject_id, "mode": "just-solve", "title": "Calculus"})
+    await client.post("/api/chats", params={"subject_id": subject_id, "title": "Algebra"})
+    await client.post("/api/chats", params={"subject_id": subject_id, "title": "Calculus"})
 
     resp = await client.get("/api/chats", params={"subject_id": subject_id})
     assert resp.status_code == 200
@@ -122,7 +120,7 @@ async def test_get_chat(client, auth):
     await auth()
     subject_resp = await client.post("/api/subjects", params={"name": "Math"})
     subject_id = subject_resp.json()["id"]
-    chat_resp = await client.post("/api/chats", params={"subject_id": subject_id, "mode": "guide"})
+    chat_resp = await client.post("/api/chats", params={"subject_id": subject_id})
     chat_id = chat_resp.json()["id"]
 
     resp = await client.get(f"/api/chats/{chat_id}")
@@ -139,7 +137,7 @@ async def test_get_chat_messages(client, auth):
     await auth()
     subject_resp = await client.post("/api/subjects", params={"name": "Math"})
     subject_id = subject_resp.json()["id"]
-    chat_resp = await client.post("/api/chats", params={"subject_id": subject_id, "mode": "guide"})
+    chat_resp = await client.post("/api/chats", params={"subject_id": subject_id})
     chat_id = chat_resp.json()["id"]
 
     resp = await client.get(f"/api/chats/{chat_id}/messages")
@@ -151,7 +149,7 @@ async def test_delete_chat(client, auth):
     await auth()
     subject_resp = await client.post("/api/subjects", params={"name": "Math"})
     subject_id = subject_resp.json()["id"]
-    chat_resp = await client.post("/api/chats", params={"subject_id": subject_id, "mode": "guide"})
+    chat_resp = await client.post("/api/chats", params={"subject_id": subject_id})
     chat_id = chat_resp.json()["id"]
 
     del_resp = await client.delete(f"/api/chats/{chat_id}")
