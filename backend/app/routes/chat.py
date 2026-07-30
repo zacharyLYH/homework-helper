@@ -26,18 +26,28 @@ router = APIRouter()
 
 def _build_lc_messages(req: ChatRequest) -> list:
     if req.messages:
-        return [
+        msgs: list = [
             HumanMessage(content=m["content"]) if m["role"] == "user"
             else AIMessage(content=m["content"])
             for m in req.messages
         ]
+        if req.quote:
+            for i in range(len(req.messages) - 1, -1, -1):
+                if req.messages[i]["role"] == "user":
+                    original = msgs[i].content
+                    msgs[i] = HumanMessage(content=f'{original}\n\n[quoting: "{req.quote}"]')
+                    break
+        return msgs
 
     if req.image and req.image_media_type:
         return [HumanMessage(content=[
             {"type": "image_url", "image_url": {"url": f"data:{req.image_media_type};base64,{req.image}"}},
             {"type": "text", "text": req.message},
         ])]
-    return [HumanMessage(content=req.message)]
+    content = req.message
+    if req.quote:
+        content = f'{content}\n\n[quoting: "{req.quote}"]'
+    return [HumanMessage(content=content)]
 
 
 def _save_user_message(req: ChatRequest) -> None:
@@ -47,6 +57,7 @@ def _save_user_message(req: ChatRequest) -> None:
         content=req.message,
         image_base64=req.image,
         image_media_type=req.image_media_type,
+        quote=req.quote,
     )
 
 

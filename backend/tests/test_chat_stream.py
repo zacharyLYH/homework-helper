@@ -225,3 +225,134 @@ async def test_chat_stream_second_message(client, auth_and_chat):
     token_lines = [l for l in lines if '"type": "token"' in l]
     full = "".join(json.loads(l.removeprefix("data: "))["content"] for l in token_lines)
     assert full == "Second reply"
+
+
+# ── quote field ──────────────────────────────────────────────────────
+
+
+async def test_chat_stream_with_quote(client, auth_and_chat):
+    """Quote field is accepted, not stored in DB, and doesn't break streaming."""
+    chat_id = await auth_and_chat()
+    token = _make_token()
+
+    with mock_llm(content="Here is the refined explanation."), mock_title_llm("Test Title"):
+        resp = await client.post(
+            "/api/chat/stream",
+            json={
+                "message": "Can you explain this more clearly?",
+                "chat_id": chat_id,
+                "quote": "The quadratic formula is x = (-b ± √(b² - 4ac)) / 2a",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        body = resp.text
+
+    assert resp.status_code == 200
+    lines = [l for l in body.split("\n") if l.strip()]
+
+    token_lines = [l for l in lines if '"type": "token"' in l]
+    assert len(token_lines) > 0
+
+    full = "".join(json.loads(l.removeprefix("data: "))["content"] for l in token_lines)
+    assert full == "Here is the refined explanation."
+
+    done_line = next(l for l in lines if '"type": "done"' in l)
+    done_data = json.loads(done_line.removeprefix("data: "))
+    assert done_data["usage"]["total_tokens"] == 20
+
+    with get_conn() as conn:
+        msgs = conn.execute(
+            "SELECT role, content, quote FROM messages WHERE chat_id = ? ORDER BY created_at",
+            (chat_id,),
+        ).fetchall()
+
+    assert len(msgs) == 2
+    assert msgs[0]["role"] == "user"
+    assert msgs[0]["content"] == "Can you explain this more clearly?"
+    assert msgs[1]["role"] == "assistant"
+    assert msgs[1]["content"] == "Here is the refined explanation."
+
+    # Verify quote is stored in its own column (not in metadata_json)
+    assert msgs[0]["quote"] == "The quadratic formula is x = (-b ± √(b² - 4ac)) / 2a"
+    assert msgs[1]["quote"] is None
+
+    with get_conn() as conn:
+        cols = [d["name"] for d in conn.execute("PRAGMA table_info(messages)").fetchall()]
+    assert "quote" in cols, "quote should exist as a column in messages table"
+
+
+async def test_chat_stream_quote_empty_string(client, auth_and_chat):
+    """Empty quote string is accepted gracefully."""
+    chat_id = await auth_and_chat()
+    token = _make_token()
+
+    with mock_llm(content="Hello"), mock_title_llm("Test Title"):
+        resp = await client.post(
+            "/api/chat/stream",
+            json={"message": "Hello", "chat_id": chat_id, "quote": ""},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert resp.status_code == 200
+
+
+async def test_build_lc_messages_appends_quote_to_last_user_message(setup_test_db):
+    """Quote is appended to the last user message, not the system prompt."""
+    from app.routes.chat import _build_lc_messages as build
+    from app.schemas import ChatRequest
+
+    req = ChatRequest(
+        message="what is hex",
+        quote="Binary uses 0 and 1.",
+        messages=[
+            {"role": "user", "content": "what is binary code"},
+            {"role": "assistant", "content": "Binary code is a system..."},
+            {"role": "user", "content": "what is hex"},
+        ],
+    )
+    msgs = build(req)
+    users = [m for m in msgs if m.type == "human"]
+    assert len(users) >= 1
+    last_user = users[-1]
+    assert "Binary uses 0 and 1." in last_user.content
+    assert '[quoting: "Binary uses 0 and 1."]' in last_user.content
+    assert last_user.content.startswith("what is hex")
+
+    # Verify system msg (GraphState prepends it separately) is untouched
+    sys_msgs = [m for m in msgs if m.type == "system"]
+    assert not sys_msgs
+
+
+async def test_build_lc_messages_appends_quote_without_history(setup_test_db):
+    """Quote is appended even when no messages history is provided."""
+    from app.routes.chat import _build_lc_messages as build
+    from app.schemas import ChatRequest
+
+    req = ChatRequest(message="what did you mean?", quote="Some text to quote.")
+    msgs = build(req)
+    assert len(msgs) == 1
+    assert msgs[0].type == "human"
+    assert "[quoting: \"Some text to quote.\"]" in msgs[0].content
+    assert msgs[0].content.startswith("what did you mean?")
+
+
+async def test_build_lc_messages_quote_empty_string_skips_append(setup_test_db):
+    """Empty quote should not append anything."""
+    from app.routes.chat import _build_lc_messages as build
+    from app.schemas import ChatRequest
+
+    req = ChatRequest(message="hello", quote="")
+    msgs = build(req)
+    assert len(msgs) == 1
+    assert msgs[0].content == "hello"
+
+
+async def test_build_lc_messages_quote_none_skips_append(setup_test_db):
+    """None quote should not append anything."""
+    from app.routes.chat import _build_lc_messages as build
+    from app.schemas import ChatRequest
+
+    req = ChatRequest(message="hello")
+    msgs = build(req)
+    assert len(msgs) == 1
+    assert msgs[0].content == "hello"

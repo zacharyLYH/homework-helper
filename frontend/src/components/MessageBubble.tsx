@@ -8,6 +8,7 @@ import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import QuoteBlock from "./QuoteBlock";
 import { Message, MessageContent, MessageFooter } from "@/components/ui/message";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import type { ChatMessage } from "@/lib/api";
@@ -59,12 +60,17 @@ export default function MessageBubble({ msg, isStreaming, isLast, onRetry }: { m
   }
 
   return (
-    <Message align={isUser ? "end" : "start"}>
+    <Message align={isUser ? "end" : "start"} data-message-role={msg.role}>
       <MessageContent>
         <Bubble variant={isUser ? "default" : "muted"}>
           <BubbleContent>
             {isUser ? (
               <>
+                {msg.quote && (
+                  <div className="mb-2">
+                    <QuoteBlock text={msg.quote} />
+                  </div>
+                )}
                 {msg.image && (
                   <img
                     src={`data:${msg.imageMediaType};base64,${msg.image}`}

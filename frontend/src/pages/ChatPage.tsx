@@ -17,6 +17,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentMessageUsage, setCurrentMessageUsage] = useState<TokenUsage | null>(null);
   const [streaming, setStreaming] = useState(false);
+  const [quote, setQuote] = useState<string | null>(null);
   const [toolCalls, setToolCalls] = useState<ToolCallInfo[]>([]);
   const toolCallsRef = useRef<ToolCallInfo[]>([]);
   const abortRef = useRef<AbortController | null>(null);
@@ -53,6 +54,7 @@ export default function ChatPage() {
         content: m.content,
         image: m.image_base64 || undefined,
         imageMediaType: m.image_media_type || undefined,
+        quote: m.quote,
         usage: getUsageFromMetadata(m.metadata_json),
         tokenCount: m.token_count || undefined,
         toolCalls: getToolCallsFromMetadata(m.metadata_json),
@@ -153,7 +155,7 @@ export default function ChatPage() {
     setToolCalls((prev) => [...prev, toolCall]);
   }, []);
 
-  const sendMessage = useCallback((userMessage: ChatMessage, contextMessages: ChatMessage[]) => {
+  const sendMessage = useCallback((userMessage: ChatMessage, contextMessages: ChatMessage[], userQuote?: string) => {
     if (streaming || !selectedChatId) return;
 
     setCurrentMessageUsage(null);
@@ -167,6 +169,7 @@ export default function ChatPage() {
       chatId: selectedChatId,
       image: userMessage.image,
       imageMediaType: userMessage.imageMediaType,
+      quote: userQuote,
       messages: contextMessages,
       onToken,
       onDone,
@@ -174,6 +177,7 @@ export default function ChatPage() {
       onTitle,
       onToolCall,
     });
+    setQuote(null);
   }, [streaming, selectedChatId, onToken, onDone, onError, onTitle, onToolCall]);
 
   const handleSubmitMessage = useCallback(async (text: string, image?: { data: string; mediaType: string; name: string }) => {
@@ -185,9 +189,10 @@ export default function ChatPage() {
       image: image?.data,
       imageMediaType: image?.mediaType,
       imageName: image?.name,
+      quote: quote ?? undefined,
     };
-    sendMessage(userMessage, [...messages, userMessage]);
-  }, [streaming, selectedChatId, messages, sendMessage]);
+    sendMessage(userMessage, [...messages, userMessage], quote ?? undefined);
+  }, [streaming, selectedChatId, messages, sendMessage, quote]);
 
   const handleRetry = useCallback((index: number) => {
     if (streaming || !selectedChatId) return;
@@ -245,6 +250,9 @@ export default function ChatPage() {
           selectedChatTokens={selectedChat?.total_tokens ?? 0}
           chatTokenLimit={chatTokenLimit}
           chatTokenPercent={chatTokenPercent}
+          quote={quote ?? undefined}
+          onClearQuote={() => setQuote(null)}
+          onQuote={(text) => setQuote(text)}
         />
       </SidebarInset>
     </SidebarProvider>

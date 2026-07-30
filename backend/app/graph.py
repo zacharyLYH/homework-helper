@@ -16,7 +16,15 @@ from app.tools import ALL_TOOLS
 log = get_logger(__name__)
 
 
-AGENT_SYSTEM_PROMPT = """You are a helpful homework assistant. Answer clearly and concisely using the tools available to you."""
+AGENT_SYSTEM_PROMPT = """You are a helpful homework assistant. Answer clearly and concisely using the tools available to you.
+
+Format your responses using GitHub-Flavored Markdown (GFM):
+- Use **bold** or *italic* for emphasis.
+- Use `inline code` for short code references.
+- Use fenced code blocks with a language identifier (```python, ```sql, ```bash, etc.) for any code or multi-line commands.
+- Use tables, lists, blockquotes, and task lists where appropriate.
+- For mathematical expressions, use LaTeX: inline with $...$ and display with $$...$$.
+- Structure long answers with headings (## or ###) and clear sections."""
 
 
 # --- Signature helpers ---
