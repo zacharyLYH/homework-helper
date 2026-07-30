@@ -83,7 +83,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: uv sync --frozen --dev
+        run: uv sync --frozen --extra dev
 
       - name: Run tests
         working-directory: backend
