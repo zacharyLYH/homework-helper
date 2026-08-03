@@ -363,6 +363,8 @@ Set in `backend/.env` (copied from `.env.example` by setup.sh):
 | `DATABASE_PATH` | no | `data/homework_helper.db` | SQLite file path |
 | `BACKEND_URL` | no | `http://127.0.0.1:8000` | Frontend→backend URL (set in Docker) |
 | `STRUCTURED_LOGGING_PCT` | yes | - | The percentage of requests that get structured logging |
+| `MEMORY_ENABLED` | no | `false` | (bool) Enable LLM memory of user or not |
+| `MEMORY_STRICT_MODE` | no | `true` | (bool) If true and memory enabled, will fail startup if memory db not found, else false |
 
 8. Local testing
 

@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
     database_path: str = ""
+    memory_enabled: bool = False
+    memory_strict_mode: bool = True
     log_level: str = "INFO"
     environment: str = "dev"
 

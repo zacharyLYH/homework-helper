@@ -11,3 +11,4 @@ async def test_health(client):
     data = resp.json()
     assert data["status"] == "ok"
     assert data["graph_compiled"] is True
+    assert data["memory_enabled"] is False

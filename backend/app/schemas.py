@@ -51,6 +51,7 @@ class HealthResponse(BaseModel):
     status: str
     model: str
     graph_compiled: bool
+    memory_enabled: bool
 
 
 # --- Database Models ---
