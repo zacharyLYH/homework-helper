@@ -6,8 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db import init_db
 from app.logging import get_logger
-from app.memory_runtime import enforce_memory_runtime, get_memory_runtime_status
 from app.routes import api_router
+from memory.service import enforce_memory_runtime, get_memory_runtime_status
 
 log = get_logger(__name__)
 
