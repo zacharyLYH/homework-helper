@@ -20,9 +20,17 @@ async def lifespan(app: FastAPI):
         memory_enabled=settings.memory_enabled,
         memory_strict_mode=settings.memory_strict_mode,
     )
+    log.info(
+        "Memory runtime check: requested=%s strict_mode=%s enabled=%s reason=%s",
+        memory_status.requested,
+        memory_status.strict_mode,
+        memory_status.enabled,
+        memory_status.reason,
+    )
     enforce_memory_runtime(memory_status)
     if memory_status.enabled:
         log.info("Memory runtime enabled: db=%s", memory_status.db_path)
+        log.info("Manual flow mode: MEMORY ON (loader/injection/updater active)")
     else:
         log.warning(
             "Memory runtime disabled: requested=%s reason=%s db=%s",
@@ -30,6 +38,7 @@ async def lifespan(app: FastAPI):
             memory_status.reason,
             memory_status.db_path,
         )
+        log.info("Manual flow mode: MEMORY OFF (regular chat flow continues without memory hooks)")
     app.state.memory_enabled = memory_status.enabled
     app.state.memory_status_reason = memory_status.reason
     yield

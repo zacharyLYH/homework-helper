@@ -145,6 +145,7 @@ def init_db(db_path: Path | None = None) -> Path:
 
 
 def list_tables(db_path: Path | None = None) -> set[str]:
+    rows: list[sqlite3.Row] = []
     with get_conn(db_path) as conn:
         rows = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"

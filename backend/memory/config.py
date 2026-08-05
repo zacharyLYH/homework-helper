@@ -14,7 +14,9 @@ REQUIRED_MEMORY_TABLES: tuple[str, ...] = (
     "retrieval_traces",
 )
 
-DEFAULT_MEMORY_DB_PATH = (Path(__file__).parent.parent.parent / "data" / "memory.db").resolve()
+DEFAULT_MEMORY_DB_PATH = (
+    Path(__file__).parent.parent.parent / "data" / "memory.db"
+).resolve()
 
 
 def resolve_memory_db_path() -> Path:

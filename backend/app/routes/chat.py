@@ -3,7 +3,7 @@ import json
 import uuid
 from typing import AsyncGenerator
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -119,7 +119,7 @@ async def _maybe_generate_title(chat_id: int | None) -> AsyncGenerator[str, None
 
 
 @router.post("/api/chat/stream")
-async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
+async def chat_stream(req: ChatRequest, request: Request, user: User = Depends(get_current_user)):
     thread_id = str(uuid.uuid4())
 
     sl = init_structured_logger(settings.structured_logging_pct)
@@ -134,13 +134,31 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
     _save_user_message(req)
 
     lc_messages = _build_lc_messages(req)
+    subject_id: int | None = None
+    if req.chat_id:
+        chat = get_chat(req.chat_id)
+        if chat is not None:
+            subject_id = chat.subject_id
+
     initial_state = {
         "messages": lc_messages,
         "model": "unknown",
         "pending_tool_calls": 0,
         "pending_tool_calls_data": [],
         "called_tools": [],
+        "user_id": user.id,
+        "subject_id": subject_id,
+        "memory_context": "",
+        "memory_loaded": False,
+        "memory_enabled": bool(getattr(request.app.state, "memory_enabled", False)),
     }
+    log.info(
+        "Chat memory mode: enabled=%s reason=%s user_id=%s subject_id=%s",
+        initial_state["memory_enabled"],
+        getattr(request.app.state, "memory_status_reason", "unknown"),
+        user.id,
+        subject_id,
+    )
     config = RunnableConfig(configurable={"thread_id": thread_id})
 
     async def event_generator():
@@ -160,6 +178,16 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
                     initial_state, config=config, version="v2"
                 ):
                     node_name = event.get("metadata", {}).get("langgraph_node", "")
+
+                    if node_name in {"memory_loader", "memory_updater"} and event["event"] in {
+                        "on_chain_start",
+                        "on_chain_end",
+                    }:
+                        log.info(
+                            "Graph memory node event: node=%s event=%s",
+                            node_name,
+                            event["event"],
+                        )
 
                     if event["event"] == "on_chat_model_end":
                         output = event["data"].get("output")
