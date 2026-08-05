@@ -295,7 +295,7 @@ SMTP_FROM=you@gmail.com
 
 ### 3. Run locally
 
-Two terminals:
+Two terminals (memory OFF profile):
 
 ```bash
 # terminal 1 — backend (http://127.0.0.1:8000)
@@ -306,6 +306,19 @@ cd frontend && npm run dev
 ```
 
 Open http://localhost:5173, enter your email, and start chatting. The Vite dev server proxies `/api` requests to the backend.
+
+Memory ON profile adds one-time bootstrap/seed and a third terminal:
+
+```bash
+# one-time bootstrap
+cd backend && uv run python -c "from memory.db import init_db; print(init_db())"
+
+# optional starter seed data
+cd backend && uv run python -m memory.seed
+
+# terminal 3 - memory worker
+cd backend && uv run python -m memory.jobs --poll-interval 2 --batch-size 20
+```
 
 ### 4. Database
 

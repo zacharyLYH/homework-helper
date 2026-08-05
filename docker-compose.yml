@@ -10,6 +10,18 @@ services:
     volumes:
       - ./data:/app/data
 
+  memory-worker:
+    build: ./backend
+    command: ["uv", "run", "python", "-m", "memory.jobs", "--poll-interval", "2", "--batch-size", "20"]
+    env_file:
+      - backend/.env
+    environment:
+      - DATABASE_PATH=/app/data/homework_helper.db
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - backend
+
   frontend:
     build: ./frontend
     ports:

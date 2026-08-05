@@ -10,6 +10,26 @@ cd ./homework-helper/backend
 uv run python -c "from memory.db import init_db; print(init_db())"
 ```
 
+## Seed (optional)
+Apply deterministic starter rows for local memory testing.
+```
+cd ./homework-helper/backend
+uv run python -m memory.seed
+```
+
+## Worker
+Run one-shot processing (useful in tests and local checks).
+```
+cd ./homework-helper/backend
+uv run python -m memory.jobs --once
+```
+
+Run long-lived worker loop.
+```
+cd ./homework-helper/backend
+uv run python -m memory.jobs --poll-interval 2 --batch-size 20
+```
+
 ## Why this database is separate
 
 | Decision | Why |
