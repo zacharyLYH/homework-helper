@@ -7,6 +7,7 @@ services:
       - backend/.env
     environment:
       - DATABASE_PATH=/app/data/homework_helper.db #volumes is at app/data/... on docker. local dev is just at /data/...
+      - DEBUG_DATABASE_PATH=/app/data/debug.db
     volumes:
       - ./data:/app/data
 

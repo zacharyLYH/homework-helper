@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.db import init_db
+from app.db import init_db, init_debug_db
 from app.logging import get_logger
 from app.routes import api_router
 
@@ -15,6 +15,7 @@ log = get_logger(__name__)
 async def lifespan(app: FastAPI):
     log.info("Starting homework-helper backend")
     init_db()
+    init_debug_db()
     yield
     log.info("Shutting down homework-helper backend")
 

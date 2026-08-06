@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
     database_path: str = ""
+    debug_database_path: str = ""
     log_level: str = "INFO"
     environment: str = "dev"
 

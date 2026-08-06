@@ -22,6 +22,78 @@ def _resolve_db_path() -> Path:
 DB_PATH = _resolve_db_path()
 
 
+def _resolve_debug_db_path() -> Path:
+    if settings.debug_database_path:
+        return Path(settings.debug_database_path)
+    return Path(__file__).parent.parent.parent / "data" / "debug.db"
+
+
+DEBUG_DB_PATH = _resolve_debug_db_path()
+
+MAIN_SCHEMA_SQL = """
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT UNIQUE NOT NULL,
+        refresh_token_expires_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS subjects (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS chats (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        subject_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        title TEXT NOT NULL DEFAULT 'New Chat',
+        total_tokens INTEGER NOT NULL DEFAULT 0,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (subject_id) REFERENCES subjects(id),
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chat_id INTEGER,
+        role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system')),
+        content TEXT NOT NULL,
+        image_base64 TEXT,
+        image_media_type TEXT,
+        metadata_json TEXT,
+        quote TEXT,
+        token_count INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS verification_codes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT NOT NULL,
+        code TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+"""
+
+DEBUG_SCHEMA_SQL = """
+    CREATE TABLE IF NOT EXISTS structured_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        message_id INTEGER,
+        log TEXT NOT NULL,
+        _req_id TEXT NOT NULL
+    );
+"""
+
+
 def _parse_dt(value: str) -> datetime:
     return datetime.fromisoformat(value)
 
@@ -58,9 +130,9 @@ def _row_to_message(row) -> Message:
 
 
 @contextmanager
-def get_conn():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH))
+def _conn(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
@@ -74,70 +146,39 @@ def get_conn():
         conn.close()
 
 
+@contextmanager
+def get_conn():
+    with _conn(DB_PATH) as conn:
+        yield conn
+
+
+@contextmanager
+def get_debug_conn():
+    with _conn(DEBUG_DB_PATH) as conn:
+        yield conn
+
+
+@contextmanager
+def _conn_ctx(conn: sqlite3.Connection | None):
+    if conn is not None:
+        yield conn
+    else:
+        with get_conn() as c:
+            yield c
+
+
 def init_db():
     log.info("Initializing database at %s", DB_PATH)
     with get_conn() as conn:
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                email TEXT UNIQUE NOT NULL,
-                refresh_token_expires_at TEXT,
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
-            );
-
-            CREATE TABLE IF NOT EXISTS subjects (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                name TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                FOREIGN KEY (user_id) REFERENCES users(id)
-            );
-
-            CREATE TABLE IF NOT EXISTS chats (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                subject_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
-                title TEXT NOT NULL DEFAULT 'New Chat',
-                total_tokens INTEGER NOT NULL DEFAULT 0,
-                input_tokens INTEGER NOT NULL DEFAULT 0,
-                output_tokens INTEGER NOT NULL DEFAULT 0,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-                FOREIGN KEY (subject_id) REFERENCES subjects(id),
-                FOREIGN KEY (user_id) REFERENCES users(id)
-            );
-
-            CREATE TABLE IF NOT EXISTS messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                chat_id INTEGER,
-                role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system')),
-                content TEXT NOT NULL,
-                image_base64 TEXT,
-                image_media_type TEXT,
-                metadata_json TEXT,
-                quote TEXT,
-                token_count INTEGER NOT NULL DEFAULT 0,
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
-            );
-
-            CREATE TABLE IF NOT EXISTS verification_codes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                email TEXT NOT NULL,
-                code TEXT NOT NULL,
-                expires_at TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
-            );
-
-            CREATE TABLE IF NOT EXISTS structured_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                type TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                message_id INTEGER,
-                log TEXT NOT NULL,
-                _req_id TEXT NOT NULL
-            );
-        """)
+        conn.executescript(MAIN_SCHEMA_SQL)
     log.info("Database initialized")
+
+
+def init_debug_db():
+    log.info("Initializing debug database at %s", DEBUG_DB_PATH)
+    with get_debug_conn() as conn:
+        conn.executescript(DEBUG_SCHEMA_SQL)
+    log.info("Debug database initialized")
 
 
 # --- User operations ---
@@ -177,9 +218,9 @@ def get_user_refresh_expiry(email: str) -> str | None:
         return row["refresh_token_expires_at"] if row else None
 
 
-def list_all_users() -> list[User]:
-    with get_conn() as conn:
-        rows = conn.execute("SELECT * FROM users ORDER BY created_at").fetchall()
+def list_all_users(conn: sqlite3.Connection | None = None) -> list[User]:
+    with _conn_ctx(conn) as c:
+        rows = c.execute("SELECT * FROM users ORDER BY created_at").fetchall()
         return [_row_to_user(r) for r in rows]
 
 
@@ -194,9 +235,9 @@ def create_subject(user_id: int, name: str) -> Subject:
         return Subject(id=cur.lastrowid, user_id=user_id, name=name, created_at=_parse_dt(now))
 
 
-def list_subjects(user_id: int) -> list[Subject]:
-    with get_conn() as conn:
-        rows = conn.execute("SELECT * FROM subjects WHERE user_id = ? ORDER BY created_at DESC", (user_id,)).fetchall()
+def list_subjects(user_id: int, conn: sqlite3.Connection | None = None) -> list[Subject]:
+    with _conn_ctx(conn) as c:
+        rows = c.execute("SELECT * FROM subjects WHERE user_id = ? ORDER BY created_at DESC", (user_id,)).fetchall()
         return [_row_to_subject(r) for r in rows]
 
 
@@ -241,9 +282,9 @@ def create_chat(subject_id: int, user_id: int, title: str = "New Chat") -> Chat:
         return Chat(id=cur.lastrowid, subject_id=subject_id, user_id=user_id, title=title, created_at=dt, updated_at=dt)
 
 
-def list_chats(subject_id: int) -> list[Chat]:
-    with get_conn() as conn:
-        rows = conn.execute("SELECT * FROM chats WHERE subject_id = ? ORDER BY created_at DESC", (subject_id,)).fetchall()
+def list_chats(subject_id: int, conn: sqlite3.Connection | None = None) -> list[Chat]:
+    with _conn_ctx(conn) as c:
+        rows = c.execute("SELECT * FROM chats WHERE subject_id = ? ORDER BY created_at DESC", (subject_id,)).fetchall()
         return [_row_to_chat(r) for r in rows]
 
 
@@ -273,9 +314,9 @@ def save_message(chat_id: int, role: str, content: str, image_base64: Optional[s
         assert cur.lastrowid is not None
         return Message(id=cur.lastrowid, chat_id=chat_id, role=role, content=content, image_base64=image_base64, image_media_type=image_media_type, metadata_json=metadata_json, quote=quote, token_count=token_count, created_at=_parse_dt(now))
     
-def get_messages(chat_id: int) -> list[Message]:
-    with get_conn() as conn:
-        rows = conn.execute("SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at ASC", (chat_id,)).fetchall()
+def get_messages(chat_id: int, conn: sqlite3.Connection | None = None) -> list[Message]:
+    with _conn_ctx(conn) as c:
+        rows = c.execute("SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at ASC", (chat_id,)).fetchall()
         return [_row_to_message(r) for r in rows]
 
 
@@ -297,17 +338,25 @@ def update_chat_title(chat_id: int, title: str) -> Optional[Chat]:
 
 
 def list_messages_with_logs() -> list[dict]:
+    with get_debug_conn() as dconn:
+        rows = dconn.execute(
+            "SELECT DISTINCT message_id FROM structured_logs WHERE message_id IS NOT NULL"
+        ).fetchall()
+    if not rows:
+        return []
+    message_ids = [r["message_id"] for r in rows]
+    placeholders = ",".join("?" for _ in message_ids)
     with get_conn() as conn:
-        rows = conn.execute("""
+        rows = conn.execute(f"""
             SELECT DISTINCT m.*, c.title AS chat_title,
                   s.name AS subject_name, u.email AS user_email
             FROM messages m
-            INNER JOIN structured_logs sl ON sl.message_id = m.id
             LEFT JOIN chats c ON m.chat_id = c.id
             LEFT JOIN subjects s ON c.subject_id = s.id
             LEFT JOIN users u ON c.user_id = u.id
+            WHERE m.id IN ({placeholders})
             ORDER BY m.created_at DESC
-        """).fetchall()
+        """, message_ids).fetchall()
         return [dict(r) for r in rows]
 
 
@@ -352,7 +401,7 @@ def list_subjects_with_chat_metadata(user_id: int) -> list[SubjectWithChats]:
 
 
 def insert_structured_log(type: str, created_at: str, message_id: int | None, log: str, req_id: str) -> None:
-    with get_conn() as conn:
+    with get_debug_conn() as conn:
         conn.execute(
             "INSERT INTO structured_logs (type, created_at, message_id, log, _req_id) VALUES (?, ?, ?, ?, ?)",
             (type, created_at, message_id, log, req_id),
@@ -360,24 +409,24 @@ def insert_structured_log(type: str, created_at: str, message_id: int | None, lo
 
 
 def update_structured_log_message_id(req_id: str, message_id: int) -> None:
-    with get_conn() as conn:
+    with get_debug_conn() as conn:
         conn.execute(
             "UPDATE structured_logs SET message_id = ? WHERE _req_id = ? AND message_id IS NULL",
             (message_id, req_id),
         )
 
 
-def list_structured_logs() -> list[dict]:
-    with get_conn() as conn:
-        rows = conn.execute(
+def list_structured_logs(conn: sqlite3.Connection | None = None) -> list[dict]:
+    with _conn_ctx(conn) as c:
+        rows = c.execute(
             "SELECT id, type, created_at, message_id, log FROM structured_logs ORDER BY created_at ASC"
         ).fetchall()
         return [dict(r) for r in rows]
 
 
-def list_structured_logs_for_message(message_id: int) -> list[dict]:
-    with get_conn() as conn:
-        rows = conn.execute(
+def list_structured_logs_for_message(message_id: int, conn: sqlite3.Connection | None = None) -> list[dict]:
+    with _conn_ctx(conn) as c:
+        rows = c.execute(
             "SELECT id, type, created_at, message_id, log FROM structured_logs WHERE message_id = ? ORDER BY created_at ASC",
             (message_id,),
         ).fetchall()

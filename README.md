@@ -239,7 +239,7 @@ two extension points in the graph allow memory nodes to be registered without mo
 
 ### debug page
 - accessible via bug icon in chat header.
-- shows all users, chats, and recent messages from the database.
+- browser + SQL editor read the real `homework_helper.db`; structured logs live in a separate `data/debug.db` (see `DEBUG_DATABASE_PATH`), auto-created at startup.
 - only accessible in non-production environments.
 
 ## docker
@@ -326,6 +326,8 @@ Seed the database like this locally: `sqlite3 data/homework_helper.db ".read dat
 
 Seed the database like this on mounted Docker volume: `sqlite3 /app/data/homework_helper.db ".read /app/data/purge-and-seed.sql"`
 
+The debug page's structured logs live in a separate `data/debug.db`, auto-created at startup. It holds only the `structured_logs` table (no seed data).
+
 ### 5. Docker
 
 ```bash
@@ -361,6 +363,7 @@ Set in `backend/.env` (copied from `.env.example` by setup.sh):
 | `LOG_LEVEL` | no | `INFO` | Logging level |
 | `ENVIRONMENT` | no | `dev` | Set to `prod` to disable debug endpoints and enable secure cookie |
 | `DATABASE_PATH` | no | `data/homework_helper.db` | SQLite file path |
+| `DEBUG_DATABASE_PATH` | no | `data/debug.db` | Debug page SQLite file path |
 | `BACKEND_URL` | no | `http://127.0.0.1:8000` | Frontend→backend URL (set in Docker) |
 | `STRUCTURED_LOGGING_PCT` | yes | - | The percentage of requests that get structured logging |
 

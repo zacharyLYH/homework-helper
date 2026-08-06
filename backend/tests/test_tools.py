@@ -4,7 +4,7 @@ from unittest.mock import patch
 import httpx
 import pytest
 
-from app.db import get_conn
+from app.db import get_conn, get_debug_conn
 from tests.mockers import mock_tool_llm, mock_title_llm
 
 
@@ -97,7 +97,7 @@ async def test_tool_call_calculator_flow(client, chat):
     assert done_events[0]["model"] == "gpt-4"
 
     # --- 4. structured logs created ---
-    with get_conn() as conn:
+    with get_debug_conn() as conn:
         log_rows = conn.execute(
             "SELECT type, message_id, log FROM structured_logs ORDER BY created_at ASC"
         ).fetchall()
@@ -165,7 +165,7 @@ async def test_tool_call_no_tool_needed(client, chat):
     assert full == "Hello world!"
 
     # --- structured logs created (no tool flow) ---
-    with get_conn() as conn:
+    with get_debug_conn() as conn:
         log_rows = conn.execute(
             "SELECT type, message_id FROM structured_logs ORDER BY created_at ASC"
         ).fetchall()
@@ -295,7 +295,7 @@ async def test_duplicate_tool_call_prevention(client, chat):
     )
 
     # --- 4. structured logs confirm one execution + one skip ---
-    with get_conn() as conn:
+    with get_debug_conn() as conn:
         log_rows = conn.execute(
             "SELECT type, log FROM structured_logs ORDER BY created_at ASC"
         ).fetchall()

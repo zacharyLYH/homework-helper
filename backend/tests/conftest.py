@@ -14,7 +14,9 @@ os.environ["STRUCTURED_LOGGING_PCT"] = "100"
 @pytest.fixture(autouse=True)
 def setup_test_db(tmp_path):
     db_path = str(tmp_path / "test.db")
+    debug_db_path = str(tmp_path / "debug_test.db")
     os.environ["DATABASE_PATH"] = db_path
+    os.environ["DEBUG_DATABASE_PATH"] = debug_db_path
 
     import app.config
     importlib.reload(app.config)
@@ -22,11 +24,14 @@ def setup_test_db(tmp_path):
     import app.db
     importlib.reload(app.db)
     app.db.DB_PATH = Path(db_path)
+    app.db.DEBUG_DB_PATH = Path(debug_db_path)
     app.db.init_db()
+    app.db.init_debug_db()
 
     yield db_path
 
     os.environ.pop("DATABASE_PATH", None)
+    os.environ.pop("DEBUG_DATABASE_PATH", None)
 
 
 @pytest_asyncio.fixture
