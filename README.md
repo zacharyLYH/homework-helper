@@ -34,6 +34,18 @@ this project is specifically for helping users with learn subjects with determin
 9. if a concept does not yet exist, the ai creates a new concept md file and adds it to the memory index.
 10. users can return to previous conversations at any time. chat histories are persisted in sqlite.
 
+## homework-alignment gate
+
+every chat request is embedded (`all-MiniLM-L6-v2`) and compared against a curated corpus of homework requests. the check runs as the **first node** in the langgraph, so rejected messages never reach the agent (and never pollute context):
+
+- **aligned** → routes to the agent; title generation happens concurrently with graph execution.
+- **not aligned** (or the encoder is unavailable — fail closed) → the graph routes straight to END. the route detects `rejected_reason` and streams a polite reply explaining the request is out of scope; the message is **not** persisted (kept out of context) and **not** sent to the model.
+- rejected requests are always written to `structured_logs` (bypassing `STRUCTURED_LOGGING_PCT` sampling) with the message, score, threshold, and reason, for observability and threshold tuning.
+
+the corpus and threshold are in `backend/app/alignment.py` and `HOMEWORK_ALIGNMENT_THRESHOLD` respectively.
+
+the embedding model is pre-downloaded into `backend/models/` (see `backend/scripts/download_embedding_model.py`) and baked into the docker image, so the gate never hits the network at runtime.
+
 ## data model
 
 ### users
@@ -239,7 +251,7 @@ two extension points in the graph allow memory nodes to be registered without mo
 
 ### debug page
 - accessible via bug icon in chat header.
-- shows all users, chats, and recent messages from the database.
+- browser + SQL editor read the real `homework_helper.db`; structured logs live in a separate `data/debug.db` (see `DEBUG_DATABASE_PATH`), auto-created at startup.
 - only accessible in non-production environments.
 
 ## docker
@@ -339,6 +351,8 @@ Seed the database like this locally: `sqlite3 data/homework_helper.db ".read dat
 
 Seed the database like this on mounted Docker volume: `sqlite3 /app/data/homework_helper.db ".read /app/data/purge-and-seed.sql"`
 
+The debug page's structured logs live in a separate `data/debug.db`, auto-created at startup. It holds only the `structured_logs` table (no seed data).
+
 ### 5. Docker
 
 ```bash
@@ -374,8 +388,12 @@ Set in `backend/.env` (copied from `.env.example` by setup.sh):
 | `LOG_LEVEL` | no | `INFO` | Logging level |
 | `ENVIRONMENT` | no | `dev` | Set to `prod` to disable debug endpoints and enable secure cookie |
 | `DATABASE_PATH` | no | `data/homework_helper.db` | SQLite file path |
+| `DEBUG_DATABASE_PATH` | no | `data/debug.db` | Debug page SQLite file path |
 | `BACKEND_URL` | no | `http://127.0.0.1:8000` | Frontend→backend URL (set in Docker) |
 | `STRUCTURED_LOGGING_PCT` | yes | - | The percentage of requests that get structured logging |
+| `STRUCTURED_LOGGING_PCT` | yes | - | Percentage of requests to persist a full structured trace. each request buffers its log events in memory and commits them all (or discards all) as one unit when it ends; `force_structured_logger()` mid-request commits the whole trace regardless of sampling |
+| `EMBEDDING_MODEL` | no | `sentence-transformers/all-MiniLM-L6-v2` | Local embedding model used for the homework-alignment gate |
+| `HOMEWORK_ALIGNMENT_THRESHOLD` | no | `0.4` | Min cosine similarity to the homework corpus for a request to pass the alignment gate |
 | `MEMORY_ENABLED` | no | `false` | (bool) Enable LLM memory of user or not |
 | `MEMORY_STRICT_MODE` | no | `true` | (bool) If true and memory enabled, will fail startup if memory db not found, else false |
 | `MEMORY_DATABASE_PATH` | no | `data/memory.db` | SQLite file path |

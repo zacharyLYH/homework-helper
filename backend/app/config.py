@@ -5,13 +5,16 @@ class Settings(BaseSettings):
     openrouter_api_key: str = ""
     openrouter_model: str = "openrouter/free"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    homework_alignment_threshold: float = 0.4
     host: str = "127.0.0.1"
     port: int = 8000
     database_path: str = ""
-    memory_enabled: bool = False
-    memory_strict_mode: bool = True
+    debug_database_path: str = ""
     log_level: str = "INFO"
     environment: str = "dev"
+    memory_enabled: bool = False
+    memory_strict_mode: bool = True
 
     #TODO: Replace with actual models to use in production
     available_models: list[str] = [

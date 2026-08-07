@@ -1,6 +1,6 @@
 import os
 
-from app.db import get_conn
+from app.db import get_conn, get_debug_conn
 from tests.seed import INITIAL_SEED
 
 DEBUG_EMAIL = "leeyihong03@gmail.com"
@@ -10,21 +10,44 @@ def _auth_headers(auth_token) -> dict:
     return {"Authorization": f"Bearer {auth_token(DEBUG_EMAIL)}"}
 
 
+def _seed_main(sql: str) -> None:
+    with get_conn() as conn:
+        conn.executescript(sql)
+
+
+def _seed_debug(sql: str) -> None:
+    with get_debug_conn() as conn:
+        conn.executescript(sql)
+
+
 async def test_debug_users_only_debug_user(client, auth_token):
+    """Debug DB holds structured_logs only; main DB holds app users."""
     headers = _auth_headers(auth_token)
     resp = await client.get("/api/debug/users", headers=headers)
     assert resp.status_code == 200
     data = resp.json()
-    assert len(data) == 1
-    assert data[0]["email"] == "leeyihong03@gmail.com"
+    assert len(data) == 1  # the debug user created by auth_token lives in main DB
+    assert data[0]["email"] == DEBUG_EMAIL
+
+    with get_debug_conn() as conn:
+        tables = {
+            r["name"] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+            ).fetchall()
+        }
+        assert tables == {"structured_logs"}
 
     with get_conn() as conn:
-        count = conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"]
-        assert count == 1  # only the debug user created by auth_token
+        tables = {
+            r["name"] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        assert "structured_logs" not in tables
 
 
 async def test_debug_users(client, seed, auth_token):
-    seed(sql=INITIAL_SEED)
+    _seed_main(INITIAL_SEED)
     headers = _auth_headers(auth_token)
     resp = await client.get("/api/debug/users", headers=headers)
     assert resp.status_code == 200
@@ -39,7 +62,7 @@ async def test_debug_users(client, seed, auth_token):
 
 
 async def test_debug_subjects(client, seed, auth_token):
-    seed(sql=INITIAL_SEED)
+    _seed_main(INITIAL_SEED)
     headers = _auth_headers(auth_token)
     resp = await client.get("/api/debug/users/1/subjects", headers=headers)
     assert resp.status_code == 200
@@ -54,7 +77,7 @@ async def test_debug_subjects(client, seed, auth_token):
 
 
 async def test_debug_chats(client, seed, auth_token):
-    seed(sql=INITIAL_SEED)
+    _seed_main(INITIAL_SEED)
     headers = _auth_headers(auth_token)
     resp = await client.get("/api/debug/subjects/1/chats", headers=headers)
     assert resp.status_code == 200
@@ -67,7 +90,7 @@ async def test_debug_chats(client, seed, auth_token):
 
 
 async def test_debug_messages(client, seed, auth_token):
-    seed(sql=INITIAL_SEED)
+    _seed_main(INITIAL_SEED)
     headers = _auth_headers(auth_token)
     resp = await client.get("/api/debug/chats/1/messages", headers=headers)
     assert resp.status_code == 200
@@ -82,7 +105,7 @@ async def test_debug_messages(client, seed, auth_token):
 
 
 async def test_debug_sql_select(client, seed, auth_token):
-    seed(sql=INITIAL_SEED)
+    _seed_main(INITIAL_SEED)
     headers = _auth_headers(auth_token)
     resp = await client.post("/api/debug/sql", json={"sql": "SELECT email FROM users ORDER BY email"}, headers=headers)
     assert resp.status_code == 200
@@ -105,7 +128,7 @@ async def test_debug_sql_insert(client, auth_token):
 
 async def test_debug_access_denied(client, seed, auth_token):
     """Non-debug users should get 403."""
-    seed(sql=INITIAL_SEED)
+    _seed_main(INITIAL_SEED)
     token = auth_token("alice@school.edu")
     resp = await client.get("/api/debug/users", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 403
@@ -120,18 +143,19 @@ async def test_debug_no_auth(client):
 
 
 def _seed_one_message_with_log():
-    """Helper: seed a user → subject → chat → message → structured_log."""
-    with get_conn() as conn:
-        conn.executescript("""
-            INSERT INTO users (id, email, created_at) VALUES (10, 'trace@test.com', '2025-01-01T00:00:00');
-            INSERT INTO subjects (id, user_id, name, created_at) VALUES (10, 10, 'Test Subject', '2025-01-01T00:00:00');
-            INSERT INTO chats (id, subject_id, user_id, title, created_at, updated_at) VALUES
-                (10, 10, 10, 'Test Chat', '2025-01-01T00:00:00', '2025-01-01T00:00:00');
-            INSERT INTO messages (id, chat_id, role, content, token_count, created_at) VALUES
-                (100, 10, 'user', 'hello world', 2, '2025-01-01T00:00:00');
-            INSERT INTO structured_logs (type, created_at, message_id, log, _req_id) VALUES
-                ('chat_request', '2025-01-01T00:00:00', 100, '{"msg":"hello"}', 'req1');
-        """)
+    """Helper: seed a user → subject → chat → message (main DB) + structured_log (debug DB)."""
+    _seed_main("""
+        INSERT INTO users (id, email, created_at) VALUES (10, 'trace@test.com', '2025-01-01T00:00:00');
+        INSERT INTO subjects (id, user_id, name, created_at) VALUES (10, 10, 'Test Subject', '2025-01-01T00:00:00');
+        INSERT INTO chats (id, subject_id, user_id, title, created_at, updated_at) VALUES
+            (10, 10, 10, 'Test Chat', '2025-01-01T00:00:00', '2025-01-01T00:00:00');
+        INSERT INTO messages (id, chat_id, role, content, token_count, created_at) VALUES
+            (100, 10, 'user', 'hello world', 2, '2025-01-01T00:00:00');
+    """)
+    _seed_debug("""
+        INSERT INTO structured_logs (type, created_at, message_id, log, _req_id) VALUES
+            ('chat_request', '2025-01-01T00:00:00', 100, '{"msg":"hello"}', 'req1');
+    """)
 
 
 async def test_traces_happy(client, seed, auth_token):
@@ -163,13 +187,14 @@ async def test_traces_multiple(client, seed, auth_token):
     _seed_one_message_with_log()
     headers = _auth_headers(auth_token)
 
-    with get_conn() as conn:
-        conn.executescript("""
-            INSERT INTO messages (id, chat_id, role, content, token_count, created_at) VALUES
-                (101, 10, 'assistant', 'hi back', 2, '2025-01-01T00:00:01');
-            INSERT INTO structured_logs (type, created_at, message_id, log, _req_id) VALUES
-                ('chat_response', '2025-01-01T00:00:01', 101, '{"msg":"back"}', 'req1');
-        """)
+    _seed_main("""
+        INSERT INTO messages (id, chat_id, role, content, token_count, created_at) VALUES
+            (101, 10, 'assistant', 'hi back', 2, '2025-01-01T00:00:01');
+    """)
+    _seed_debug("""
+        INSERT INTO structured_logs (type, created_at, message_id, log, _req_id) VALUES
+            ('chat_response', '2025-01-01T00:00:01', 101, '{"msg":"back"}', 'req1');
+    """)
 
     resp = await client.get("/api/debug/traces", headers=headers)
     assert resp.status_code == 200
@@ -180,9 +205,8 @@ async def test_traces_multiple(client, seed, auth_token):
 async def test_traces_sad_no_join_data(client, seed, auth_token):
     """Message with log but no chat/subject/user — nullable fields should be None."""
     headers = _auth_headers(auth_token)
-    with get_conn() as conn:
-        conn.execute("INSERT INTO messages (id, chat_id, role, content, token_count, created_at) VALUES (200, 0, 'user', 'orphan', 0, '2025-01-01T00:00:00')")
-        conn.execute("INSERT INTO structured_logs (type, created_at, message_id, log, _req_id) VALUES ('test', '2025-01-01T00:00:00', 200, '{}', 'r2')")
+    _seed_main("INSERT INTO messages (id, chat_id, role, content, token_count, created_at) VALUES (200, 0, 'user', 'orphan', 0, '2025-01-01T00:00:00')")
+    _seed_debug("INSERT INTO structured_logs (type, created_at, message_id, log, _req_id) VALUES ('test', '2025-01-01T00:00:00', 200, '{}', 'r2')")
 
     resp = await client.get("/api/debug/traces", headers=headers)
     assert resp.status_code == 200
@@ -231,8 +255,7 @@ async def test_logs_filter_by_message(client, seed, auth_token):
 async def test_logs_sad_no_message_id(client, seed, auth_token):
     """Log with NULL message_id should appear in unfiltered list."""
     headers = _auth_headers(auth_token)
-    with get_conn() as conn:
-        conn.execute("INSERT INTO structured_logs (type, created_at, message_id, log, _req_id) VALUES ('orphan', '2025-01-01T00:00:00', NULL, '{}', 'r3')")
+    _seed_debug("INSERT INTO structured_logs (type, created_at, message_id, log, _req_id) VALUES ('orphan', '2025-01-01T00:00:00', NULL, '{}', 'r3')")
 
     resp = await client.get("/api/debug/logs", headers=headers)
     assert resp.status_code == 200

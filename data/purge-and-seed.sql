@@ -1,10 +1,13 @@
-DROP TABLE IF EXISTS structured_logs;
 DROP TABLE IF EXISTS messages;
 DROP TABLE IF EXISTS chats;
 DROP TABLE IF EXISTS subjects;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS verification_codes;
 DELETE FROM sqlite_sequence;
+
+ATTACH DATABASE 'data/debug.db' AS debug;
+DELETE FROM debug.structured_logs;
+DETACH DATABASE debug;
 
 CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,15 +57,6 @@ CREATE TABLE verification_codes (
     code TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE structured_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    type TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    message_id INTEGER,
-    log TEXT NOT NULL,
-    _req_id TEXT NOT NULL
 );
 
 INSERT INTO users (email, refresh_token_expires_at) VALUES ('alice@school.edu', datetime('now', '+6 months'));

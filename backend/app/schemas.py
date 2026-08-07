@@ -23,6 +23,8 @@ class GraphState(TypedDict):
     memory_context: str
     memory_loaded: bool
     memory_enabled: bool
+    rejected_reason: str
+    alignment_score: float
 
 
 # --- Enums ---

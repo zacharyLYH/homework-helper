@@ -1,5 +1,8 @@
+import asyncio
 import json
+from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 from app.db import get_conn
@@ -51,7 +54,7 @@ async def test_chat_stream_events(client, auth_and_chat):
     with mock_llm(content="Hello world"), mock_title_llm("Test Title"):
         resp = await client.post(
             "/api/chat/stream",
-            json={"message": "What is 2+2?", "chat_id": chat_id},
+            json={"message": "help me solve this calculus problem", "chat_id": chat_id},
             headers={"Authorization": f"Bearer {token}"},
         )
         body = resp.text
@@ -125,7 +128,7 @@ async def test_chat_stream_unicode_message(client, auth_and_chat):
     with mock_llm(content="¡Hola! 你好 こんにちは"), mock_title_llm():
         resp = await client.post(
             "/api/chat/stream",
-            json={"message": "π ≈ 3.14159 🎉", "chat_id": chat_id},
+            json={"message": "What does this physics formula mean: π ≈ 3.14159 🎉?", "chat_id": chat_id},
             headers={"Authorization": f"Bearer {token}"},
         )
 
@@ -141,7 +144,7 @@ async def test_chat_stream_unicode_message(client, auth_and_chat):
             "SELECT content FROM messages WHERE chat_id = ? ORDER BY created_at",
             (chat_id,),
         ).fetchall()
-        assert msgs[0]["content"] == "π ≈ 3.14159 🎉"
+        assert msgs[0]["content"] == "What does this physics formula mean: π ≈ 3.14159 🎉?"
         assert msgs[1]["content"] == "¡Hola! 你好 こんにちは"
 
 
@@ -154,7 +157,7 @@ async def test_chat_stream_with_image(client, auth_and_chat):
         resp = await client.post(
             "/api/chat/stream",
             json={
-                "message": "What is in this image?",
+                "message": "What is this diagram from my physics homework?",
                 "chat_id": chat_id,
                 "image": image_b64,
                 "image_media_type": "image/png",
@@ -179,7 +182,7 @@ async def test_chat_stream_with_image(client, auth_and_chat):
 
     assert len(msgs) == 2
     assert msgs[0]["role"] == "user"
-    assert msgs[0]["content"] == "What is in this image?"
+    assert msgs[0]["content"] == "What is this diagram from my physics homework?"
     assert msgs[0]["image_base64"] == image_b64
     assert msgs[0]["image_media_type"] == "image/png"
     assert msgs[1]["role"] == "assistant"
@@ -194,7 +197,7 @@ async def test_chat_stream_second_message(client, auth_and_chat):
     with mock_llm(content="First reply"), mock_title_llm("Test Title"):
         resp1 = await client.post(
             "/api/chat/stream",
-            json={"message": "First message", "chat_id": chat_id},
+            json={"message": "Help me with my first homework question", "chat_id": chat_id},
             headers={"Authorization": f"Bearer {token}"},
         )
     assert resp1.status_code == 200
@@ -202,7 +205,7 @@ async def test_chat_stream_second_message(client, auth_and_chat):
     with mock_llm(content="Second reply"), mock_title_llm():
         resp2 = await client.post(
             "/api/chat/stream",
-            json={"message": "Second message", "chat_id": chat_id},
+            json={"message": "Help me with my second homework question", "chat_id": chat_id},
             headers={"Authorization": f"Bearer {token}"},
         )
     assert resp2.status_code == 200
@@ -215,9 +218,9 @@ async def test_chat_stream_second_message(client, auth_and_chat):
 
     assert len(msgs) == 4
     assert [dict(r) for r in msgs] == [
-        {"role": "user", "content": "First message"},
+        {"role": "user", "content": "Help me with my first homework question"},
         {"role": "assistant", "content": "First reply"},
-        {"role": "user", "content": "Second message"},
+        {"role": "user", "content": "Help me with my second homework question"},
         {"role": "assistant", "content": "Second reply"},
     ]
 
@@ -225,6 +228,169 @@ async def test_chat_stream_second_message(client, auth_and_chat):
     token_lines = [l for l in lines if '"type": "token"' in l]
     full = "".join(json.loads(l.removeprefix("data: "))["content"] for l in token_lines)
     assert full == "Second reply"
+
+
+# ── alignment gate ───────────────────────────────────────────────────
+
+
+async def test_chat_stream_rejects_off_topic_message(client, auth_and_chat):
+    chat_id = await auth_and_chat()
+    token = _make_token()
+
+    resp = await client.post(
+        "/api/chat/stream",
+        json={"message": "write me a poem about dragons", "chat_id": chat_id},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 200
+    lines = [l for l in resp.text.split("\n") if l.strip()]
+
+    token_lines = [l for l in lines if '"type": "token"' in l]
+    full = "".join(json.loads(l.removeprefix("data: "))["content"] for l in token_lines)
+    assert "homework" in full
+
+    done_line = next(l for l in lines if '"type": "done"' in l)
+    done_data = json.loads(done_line.removeprefix("data: "))
+    assert done_data["usage"]["total_tokens"] == 0
+
+    with get_conn() as conn:
+        msgs = conn.execute(
+            "SELECT role, content FROM messages WHERE chat_id = ? ORDER BY created_at",
+            (chat_id,),
+        ).fetchall()
+    assert msgs == [], "rejected bad data must not be persisted"
+
+
+async def test_chat_stream_rejection_is_structured_logged(client, auth_and_chat):
+    chat_id = await auth_and_chat()
+    token = _make_token()
+
+    resp = await client.post(
+        "/api/chat/stream",
+        json={"message": "tell me a joke", "chat_id": chat_id},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+
+    import sqlite3
+
+    from app.db import DEBUG_DB_PATH
+
+    conn = sqlite3.connect(DEBUG_DB_PATH)
+    try:
+        rows = conn.execute(
+            "SELECT type, log FROM structured_logs WHERE type = 'chat_rejected'"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert len(rows) == 1
+    assert "tell me a joke" in rows[0][1]
+    assert '"reason": "below_threshold"' in rows[0][1]
+    assert '"score":' in rows[0][1]
+
+
+async def test_chat_stream_allows_aligned_message(client, auth_and_chat):
+    chat_id = await auth_and_chat()
+    token = _make_token()
+
+    with mock_llm(content="Hello world"), mock_title_llm("Test Title"):
+        resp = await client.post(
+            "/api/chat/stream",
+            json={"message": "help me with my calculus homework", "chat_id": chat_id},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert resp.status_code == 200
+    lines = [l for l in resp.text.split("\n") if l.strip()]
+    token_lines = [l for l in lines if '"type": "token"' in l]
+    full = "".join(json.loads(l.removeprefix("data: "))["content"] for l in token_lines)
+    assert full == "Hello world"
+
+    with get_conn() as conn:
+        msgs = conn.execute(
+            "SELECT role, content FROM messages WHERE chat_id = ? ORDER BY created_at",
+            (chat_id,),
+        ).fetchall()
+    assert len(msgs) == 2
+    assert msgs[0]["content"] == "help me with my calculus homework"
+    assert msgs[1]["content"] == "Hello world"
+
+
+async def test_title_and_graph_run_concurrently(client, auth_and_chat):
+    """Title generation and graph execution must overlap, not run serially."""
+    chat_id = await auth_and_chat()
+    token = _make_token()
+    order: list[str] = []
+
+    def _sse(data: str) -> bytes:
+        return f"data: {data}\n\n".encode()
+
+    async def _llm_handler(request: httpx.Request) -> httpx.Response:
+        body = await request.aread()
+        req = json.loads(body) if body else {}
+        if not req.get("stream", False):
+            return httpx.Response(200, json={
+                "id": "chatcmpl-mock",
+                "object": "chat.completion",
+                "created": 1677652288,
+                "model": "gpt-4",
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": "Hello world"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 15, "completion_tokens": 5, "total_tokens": 20},
+            })
+
+        order.append("graph_started")
+
+        async def _sse_body():
+            for word in ["Hello ", "world"]:
+                yield _sse(json.dumps({
+                    "id": "chatcmpl-mock",
+                    "object": "chat.completion.chunk",
+                    "created": 1677652288,
+                    "model": "gpt-4",
+                    "choices": [{"index": 0, "delta": {"content": word}, "finish_reason": None}],
+                }))
+            yield _sse(json.dumps({
+                "id": "chatcmpl-mock",
+                "object": "chat.completion.chunk",
+                "created": 1677652288,
+                "model": "gpt-4",
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 15, "completion_tokens": 5, "total_tokens": 20},
+            }))
+            yield b"data: [DONE]\n\n"
+
+        return httpx.Response(200, content=_sse_body(), headers={"Content-Type": "text/event-stream"})
+
+    class _TitleMock:
+        async def astream(self, prompt):
+            order.append("title_started")
+            await asyncio.sleep(0.2)
+            chunk = MagicMock()
+            chunk.content = "Concurrent Title"
+            yield chunk
+            order.append("title_ended")
+
+    transport = httpx.MockTransport(_llm_handler)
+    mock_client = httpx.AsyncClient(transport=transport)
+
+    with patch("langchain_openai.chat_models.base._get_default_async_httpx_client", return_value=mock_client), \
+         patch("app.routes.chat.title_llm", _TitleMock()):
+        resp = await client.post(
+            "/api/chat/stream",
+            json={"message": "help me with my calculus homework", "chat_id": chat_id},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert resp.status_code == 200
+    assert order.index("graph_started") < order.index("title_ended"), \
+        "graph must start while title generation is still in flight"
+
+    lines = [l for l in resp.text.split("\n") if l.strip()]
+    title_idx = next(i for i, l in enumerate(lines) if '"type": "title"' in l)
+    token_idx = next(i for i, l in enumerate(lines) if '"type": "token"' in l)
+    assert title_idx < token_idx
 
 
 # ── quote field ──────────────────────────────────────────────────────
@@ -239,7 +405,7 @@ async def test_chat_stream_with_quote(client, auth_and_chat):
         resp = await client.post(
             "/api/chat/stream",
             json={
-                "message": "Can you explain this more clearly?",
+                "message": "Can you explain this homework problem more clearly?",
                 "chat_id": chat_id,
                 "quote": "The quadratic formula is x = (-b ± √(b² - 4ac)) / 2a",
             },
@@ -268,7 +434,7 @@ async def test_chat_stream_with_quote(client, auth_and_chat):
 
     assert len(msgs) == 2
     assert msgs[0]["role"] == "user"
-    assert msgs[0]["content"] == "Can you explain this more clearly?"
+    assert msgs[0]["content"] == "Can you explain this homework problem more clearly?"
     assert msgs[1]["role"] == "assistant"
     assert msgs[1]["content"] == "Here is the refined explanation."
 
@@ -289,7 +455,7 @@ async def test_chat_stream_quote_empty_string(client, auth_and_chat):
     with mock_llm(content="Hello"), mock_title_llm("Test Title"):
         resp = await client.post(
             "/api/chat/stream",
-            json={"message": "Hello", "chat_id": chat_id, "quote": ""},
+            json={"message": "help me solve this calculus problem", "chat_id": chat_id, "quote": ""},
             headers={"Authorization": f"Bearer {token}"},
         )
 

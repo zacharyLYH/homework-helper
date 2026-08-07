@@ -8,6 +8,10 @@ WORKDIR /app
 COPY pyproject.toml uv.lock .python-version ./
 RUN uv sync --frozen --no-dev
 
+# Embedding model is pre-downloaded into the repo (scripts/download_embedding_model.py)
+# and baked into the image so alignment never hits the network at runtime.
+COPY models/ ./models/
+
 COPY . .
 
 EXPOSE 8000

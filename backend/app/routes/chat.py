@@ -10,12 +10,23 @@ from langchain_core.runnables import RunnableConfig
 
 from app.auth import get_current_user
 from app.config import settings
+from app.constants import (
+    NODE_ALIGNMENT_CHECK,
+    NODE_TOOL_EXECUTOR,
+    STATE_ALIGNMENT_SCORE,
+    STATE_CALLED_TOOLS,
+    STATE_MESSAGES,
+    STATE_MODEL,
+    STATE_PENDING_TOOL_CALLS,
+    STATE_PENDING_TOOL_CALLS_DATA,
+    STATE_REJECTED_REASON,
+)
 from app.db import get_chat, get_messages, save_message, update_chat_title, update_chat_token_usage
 from app.graph import compiled_graph
 from app.llm import title_llm
 from app.logging import get_logger, structured_log
 from app.schemas import ChatRequest, User
-from app.structured_log import init_structured_logger
+from app.structured_log import force_structured_logger, get_structured_logger
 
 log = get_logger(__name__)
 router = APIRouter()
@@ -72,7 +83,6 @@ def _save_assistant_message(chat_id: int | None, full_reply: str, model_used: st
         metadata_json=json.dumps(metadata),
         token_count=total_usage["total_tokens"],
     )
-    from app.structured_log import get_structured_logger
     logger = get_structured_logger()
     if logger is not None:
         logger.set_message_id(msg.id)
@@ -118,20 +128,22 @@ async def _maybe_generate_title(chat_id: int | None) -> AsyncGenerator[str, None
 # --- Route ---
 
 
+def _rejection_reply(reason: str) -> str:
+    if reason == "encoder_unavailable":
+        return "I can't process that request right now. Please try again in a moment."
+    return (
+        "I can't help with that. This app is for homework questions only — "
+        "math, science, economics, finance, and similar subjects. "
+        "Ask me a specific homework question and I'll guide you through it step by step."
+    )
+
+
 @router.post("/api/chat/stream")
 async def chat_stream(req: ChatRequest, request: Request, user: User = Depends(get_current_user)):
     thread_id = str(uuid.uuid4())
 
-    sl = init_structured_logger(settings.structured_logging_pct)
-    if sl:
-        log.info("Structured logging ACTIVE for request: %s", thread_id)
-        structured_log("chat_request", message=req.message, message_length=len(req.message), chat_id=req.chat_id, thread_id=thread_id, has_image=bool(req.image))
-    else:
-        log.info("Structured logging SKIPPED for request: %s", thread_id)
-
+    structured_log("chat_request", message=req.message, message_length=len(req.message), chat_id=req.chat_id, thread_id=thread_id, has_image=bool(req.image))
     log.info("Chat stream request: thread_id=%s, chat_id=%s, message_length=%d", thread_id, req.chat_id, len(req.message))
-
-    _save_user_message(req)
 
     lc_messages = _build_lc_messages(req)
     subject_id: int | None = None
@@ -141,11 +153,13 @@ async def chat_stream(req: ChatRequest, request: Request, user: User = Depends(g
             subject_id = chat.subject_id
 
     initial_state = {
-        "messages": lc_messages,
-        "model": "unknown",
-        "pending_tool_calls": 0,
-        "pending_tool_calls_data": [],
-        "called_tools": [],
+        STATE_MESSAGES: lc_messages,
+        STATE_MODEL: "unknown",
+        STATE_PENDING_TOOL_CALLS: 0,
+        STATE_PENDING_TOOL_CALLS_DATA: [],
+        STATE_CALLED_TOOLS: [],
+        STATE_REJECTED_REASON: "",
+        STATE_ALIGNMENT_SCORE: 0.0,
         "user_id": user.id,
         "subject_id": subject_id,
         "memory_context": "",
@@ -170,9 +184,12 @@ async def chat_stream(req: ChatRequest, request: Request, user: User = Depends(g
         queue: asyncio.Queue = asyncio.Queue()
         pending_tool_calls = 0
         tool_calls_meta: list[dict] = []
+        rejection_reason = ""
+        rejection_score = 0.0
+        alignment_done = asyncio.Event()
 
         async def _stream_graph():
-            nonlocal full_reply, model_used, total_usage, pending_tool_calls, tool_calls_meta
+            nonlocal full_reply, model_used, total_usage, pending_tool_calls, tool_calls_meta, rejection_reason, rejection_score
             try:
                 async for event in compiled_graph.astream_events(
                     initial_state, config=config, version="v2"
@@ -188,6 +205,14 @@ async def chat_stream(req: ChatRequest, request: Request, user: User = Depends(g
                             node_name,
                             event["event"],
                         )
+                    if node_name == NODE_ALIGNMENT_CHECK and event["event"] == "on_chain_end":
+                        output = event["data"].get("output") or {}
+                        if isinstance(output, dict):
+                            rejection_reason = output.get(STATE_REJECTED_REASON, "")
+                            rejection_score = output.get(STATE_ALIGNMENT_SCORE, 0.0)
+                            alignment_done.set()
+                            if rejection_reason:
+                                return
 
                     if event["event"] == "on_chat_model_end":
                         output = event["data"].get("output")
@@ -200,11 +225,11 @@ async def chat_stream(req: ChatRequest, request: Request, user: User = Depends(g
                                 await queue.put(f"data: {json.dumps({'type': 'tool_call', 'name': tc['name'], 'args': tc['args'], 'id': tc['id']})}\n\n")
 
                     if pending_tool_calls > 0:
-                        if node_name == "tool_executor" and event["event"] == "on_chain_end":
+                        if node_name == NODE_TOOL_EXECUTOR and event["event"] == "on_chain_end":
                             pending_tool_calls = 0
                         continue
 
-                    if node_name == "tool_executor":
+                    if node_name == NODE_TOOL_EXECUTOR:
                         continue
 
                     if event["event"] == "on_chat_model_stream":
@@ -239,6 +264,7 @@ async def chat_stream(req: ChatRequest, request: Request, user: User = Depends(g
                 log.error("Stream execution failed: %s", e, exc_info=True)
                 structured_log("stream_error", error=str(e))
             finally:
+                alignment_done.set()
                 await queue.put(None)
 
         async def _stream_title():
@@ -247,8 +273,31 @@ async def chat_stream(req: ChatRequest, request: Request, user: User = Depends(g
                     title_events.append(event)
 
         graph_task = asyncio.create_task(_stream_graph())
-        title_task = asyncio.create_task(_stream_title())
+        await alignment_done.wait()
 
+        if rejection_reason:
+            force_structured_logger()
+            structured_log(
+                "chat_rejected",
+                message=req.message,
+                message_length=len(req.message),
+                score=rejection_score,
+                threshold=settings.homework_alignment_threshold,
+                reason=rejection_reason,
+                chat_id=req.chat_id,
+                thread_id=thread_id,
+                has_image=bool(req.image),
+            )
+            log.info("Chat request rejected: thread_id=%s reason=%s score=%.3f", thread_id, rejection_reason, rejection_score)
+            await graph_task
+            yield f"data: {json.dumps({'type': 'token', 'content': _rejection_reply(rejection_reason)})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'thread_id': thread_id, 'model': 'none', 'usage': {'input_tokens': 0, 'output_tokens': 0, 'total_tokens': 0}})}\n\n"
+            return
+
+        log.info("Chat stream request: thread_id=%s, chat_id=%s, message_length=%d", thread_id, req.chat_id, len(req.message))
+        _save_user_message(req)
+
+        title_task = asyncio.create_task(_stream_title())
         await title_task
         for event in title_events:
             yield event

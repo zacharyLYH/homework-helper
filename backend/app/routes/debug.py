@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.auth import get_current_user
-from app.db import get_conn, list_all_users, list_chats, list_subjects, get_messages, list_structured_logs, list_structured_logs_for_message, list_messages_with_logs
+from app.db import get_conn, get_debug_conn, list_all_users, list_chats, list_subjects, get_messages, list_structured_logs, list_structured_logs_for_message, list_messages_with_logs
 from app.logging import get_logger
 from app.schemas import User
 
@@ -61,9 +61,10 @@ async def execute_sql(req: SqlRequest, user: User = Depends(_require_debug_user)
 
 @router.get("/api/debug/logs")
 async def get_logs(message_id: int | None = Query(None), user: User = Depends(_require_debug_user)):
-    if message_id is not None:
-        return list_structured_logs_for_message(message_id)
-    return list_structured_logs()
+    with get_debug_conn() as conn:
+        if message_id is not None:
+            return list_structured_logs_for_message(message_id, conn)
+        return list_structured_logs(conn)
 
 
 @router.get("/api/debug/traces")
