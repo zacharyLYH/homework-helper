@@ -46,6 +46,16 @@ def init_structured_logger(pct: int) -> StructuredLogger | None:
     return None
 
 
+def force_structured_logger() -> StructuredLogger:
+    """Create and set a structured logger regardless of sampling.
+
+    Used for events that must always be observable (e.g. rejected requests).
+    """
+    logger = StructuredLogger()
+    _logger_var.set(logger)
+    return logger
+
+
 def get_structured_logger() -> StructuredLogger | None:
     return _logger_var.get()
 

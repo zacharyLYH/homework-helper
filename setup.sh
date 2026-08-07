@@ -27,6 +27,7 @@ cd backend
 uv sync --frozen --no-dev
 uv run python -c "from app.db import init_db; init_db()"
 uv run python -c "from app.db import seed_db; seed_db()" 2>/dev/null || true
+uv run python scripts/download_embedding_model.py
 cd ..
 
 echo ""

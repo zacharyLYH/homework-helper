@@ -70,7 +70,7 @@ async def test_tool_call_calculator_flow(client, chat):
     with mock_tool_llm("calculator", tool_args, "The answer is 4."), mock_title_llm("Test"):
         resp = await client.post(
             "/api/chat/stream",
-            json={"message": "what is 2+2?", "chat_id": chat_id},
+            json={"message": "help me solve this calculus problem", "chat_id": chat_id},
             headers={"Authorization": f"Bearer {token}"},
         )
 
@@ -148,7 +148,7 @@ async def test_tool_call_no_tool_needed(client, chat):
     with mock_tool_llm(None, "", "Hello world!"), mock_title_llm("Test"):
         resp = await client.post(
             "/api/chat/stream",
-            json={"message": "Hi", "chat_id": chat_id},
+            json={"message": "help me with my homework assignment", "chat_id": chat_id},
             headers={"Authorization": f"Bearer {token}"},
         )
 
@@ -268,7 +268,7 @@ async def test_duplicate_tool_call_prevention(client, chat):
     ), mock_title_llm("Test"):
         resp = await client.post(
             "/api/chat/stream",
-            json={"message": "what is 2+2?", "chat_id": chat_id},
+            json={"message": "help me solve this calculus problem", "chat_id": chat_id},
             headers={"Authorization": f"Bearer {token}"},
         )
 

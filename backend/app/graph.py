@@ -8,6 +8,20 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
 
+from app.alignment import check_alignment
+from app.config import settings
+from app.constants import (
+    END_LABEL,
+    NODE_AGENT,
+    NODE_ALIGNMENT_CHECK,
+    NODE_TOOL_EXECUTOR,
+    STATE_ALIGNMENT_SCORE,
+    STATE_CALLED_TOOLS,
+    STATE_MESSAGES,
+    STATE_PENDING_TOOL_CALLS,
+    STATE_PENDING_TOOL_CALLS_DATA,
+    STATE_REJECTED_REASON,
+)
 from app.llm import stream_llm
 from app.logging import get_logger, structured_log
 from app.schemas import GraphState
@@ -58,12 +72,12 @@ def _is_repeat(name: str, args: dict, called: set[str]) -> bool:
 
 
 def tool_executor(state: GraphState) -> dict:
-    pending_data = state.get("pending_tool_calls_data", [])
+    pending_data = state.get(STATE_PENDING_TOOL_CALLS_DATA, [])
     if not pending_data:
         structured_log("tool_executor_skip", reason="no_pending_data")
-        return {"pending_tool_calls": 0, "pending_tool_calls_data": []}
+        return {STATE_PENDING_TOOL_CALLS: 0, STATE_PENDING_TOOL_CALLS_DATA: []}
 
-    called: set[str] = set(state.get("called_tools", []))
+    called: set[str] = set(state.get(STATE_CALLED_TOOLS, []))
 
     fresh_calls = []
     for tc in pending_data:
@@ -72,7 +86,7 @@ def tool_executor(state: GraphState) -> dict:
 
     if not fresh_calls:
         structured_log("tool_executor_skip", reason="all_tools_already_called", signatures=list(called))
-        return {"pending_tool_calls": 0, "pending_tool_calls_data": []}
+        return {STATE_PENDING_TOOL_CALLS: 0, STATE_PENDING_TOOL_CALLS_DATA: []}
 
     # Build a fresh AIMessage for ToolNode (bypasses add_messages corruption)
     msg = AIMessage(
@@ -99,10 +113,53 @@ def tool_executor(state: GraphState) -> dict:
 
     return {
         "messages": tool_msgs,
-        "pending_tool_calls": max(0, state.get("pending_tool_calls", 0) - 1),
-        "pending_tool_calls_data": [],
-        "called_tools": list(called | set(new_signatures)),
+        STATE_PENDING_TOOL_CALLS: max(0, state.get(STATE_PENDING_TOOL_CALLS, 0) - 1),
+        STATE_PENDING_TOOL_CALLS_DATA: [],
+        STATE_CALLED_TOOLS: list(called | set(new_signatures)),
     }
+
+
+# --- Alignment gate ---
+
+
+def _latest_user_text(state: GraphState) -> str:
+    messages = state.get(STATE_MESSAGES, [])
+    if not messages:
+        return ""
+    content = messages[-1].content
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(
+            part.get("text", "")
+            for part in content
+            if isinstance(part, dict) and part.get("type") == "text"
+        )
+    return ""
+
+
+def alignment_check(state: GraphState) -> dict:
+    """First node: reject out-of-scope requests before the agent ever runs."""
+    allowed, score, reason = check_alignment(_latest_user_text(state))
+    structured_log(
+        "alignment_check",
+        allowed=allowed,
+        score=score,
+        threshold=settings.homework_alignment_threshold,
+        reason=reason,
+    )
+    return {
+        STATE_REJECTED_REASON: "" if allowed else reason,
+        STATE_ALIGNMENT_SCORE: score,
+    }
+
+
+def route_after_alignment(state: GraphState) -> Literal["agent", "end"]:
+    if state.get(STATE_REJECTED_REASON, ""):
+        structured_log("graph_route", destination="end", reason="alignment_rejected")
+        return END_LABEL
+    structured_log("graph_route", destination="agent", reason="alignment_ok")
+    return NODE_AGENT
 
 
 # --- Agent node ---
@@ -114,27 +171,27 @@ async def _node_with_prompt(
     bind_tools: list | None = None,
     config: RunnableConfig | None = None,
 ) -> AsyncGenerator[dict, None]:
-    messages = state["messages"]
+    messages = state[STATE_MESSAGES]
     if system_prompt:
         messages = [SystemMessage(content=system_prompt)] + messages
     async for chunk, _model in stream_llm(messages, bind_tools=bind_tools, config=config):
-        yield {"messages": [chunk]}
+        yield {STATE_MESSAGES: [chunk]}
 
 
 async def agent(state: GraphState, config: RunnableConfig | None = None) -> AsyncGenerator[dict, None]:
     log.info("Agent node invoked")
     structured_log(
         "agent_start",
-        message_count=len(state["messages"]),
-        last_role=getattr(state["messages"][-1], "type", None) if state["messages"] else None,
-        pending_tool_calls=state.get("pending_tool_calls", 0),
+        message_count=len(state[STATE_MESSAGES]),
+        last_role=getattr(state[STATE_MESSAGES][-1], "type", None) if state[STATE_MESSAGES] else None,
+        pending_tool_calls=state.get(STATE_PENDING_TOOL_CALLS, 0),
     )
 
     pending = 0
     tc_data: dict[int, dict] = {}
 
     async for update in _node_with_prompt(state, AGENT_SYSTEM_PROMPT, bind_tools=ALL_TOOLS, config=config):
-        chunk = update.get("messages", [None])[0]
+        chunk = update.get(STATE_MESSAGES, [None])[0]
 
         if hasattr(chunk, "tool_call_chunks") and chunk.tool_call_chunks:
             for tcc in chunk.tool_call_chunks:
@@ -166,7 +223,7 @@ async def agent(state: GraphState, config: RunnableConfig | None = None) -> Asyn
                         tool_call_id=tid,
                     )
 
-        update["pending_tool_calls"] = pending
+        update[STATE_PENDING_TOOL_CALLS] = pending
         yield update
 
     # After stream exhausts, build complete tool call data from accumulated chunks
@@ -181,23 +238,23 @@ async def agent(state: GraphState, config: RunnableConfig | None = None) -> Asyn
             except json.JSONDecodeError:
                 full_args = {}
             calls.append({"name": full_name, "args": full_args, "id": d["id"]})
-        yield {"pending_tool_calls": pending, "pending_tool_calls_data": calls}
+        yield {STATE_PENDING_TOOL_CALLS: pending, STATE_PENDING_TOOL_CALLS_DATA: calls}
 
 
 # --- Conditional edges ---
 
 
 def route_after_agent(state: GraphState) -> Literal["tool_executor", "end"]:
-    if state.get("pending_tool_calls", 0) > 0:
-        pending_data = state.get("pending_tool_calls_data", [])
-        called: set[str] = set(state.get("called_tools", []))
+    if state.get(STATE_PENDING_TOOL_CALLS, 0) > 0:
+        pending_data = state.get(STATE_PENDING_TOOL_CALLS_DATA, [])
+        called: set[str] = set(state.get(STATE_CALLED_TOOLS, []))
         if pending_data and all(_is_repeat(tc["name"], tc["args"], called) for tc in pending_data):
-            structured_log("graph_route", destination="end", reason="all_tools_already_called", pending_calls=state["pending_tool_calls"])
-            return "end"
-        structured_log("graph_route", destination="tool_executor", pending_calls=state["pending_tool_calls"])
-        return "tool_executor"
+            structured_log("graph_route", destination="end", reason="all_tools_already_called", pending_calls=state[STATE_PENDING_TOOL_CALLS])
+            return END_LABEL
+        structured_log("graph_route", destination="tool_executor", pending_calls=state[STATE_PENDING_TOOL_CALLS])
+        return NODE_TOOL_EXECUTOR
     structured_log("graph_route", destination="end", pending_calls=0)
-    return "end"
+    return END_LABEL
 
 
 # --- Graph builder ---
@@ -207,15 +264,20 @@ def build_graph() -> CompiledStateGraph:
     log.info("Building LangGraph state machine")
     graph_builder = StateGraph(GraphState)
 
-    graph_builder.add_node("agent", agent)
-    graph_builder.add_node("tool_executor", tool_executor)
+    graph_builder.add_node(NODE_ALIGNMENT_CHECK, alignment_check)
+    graph_builder.add_node(NODE_AGENT, agent)
+    graph_builder.add_node(NODE_TOOL_EXECUTOR, tool_executor)
 
-    graph_builder.add_edge(START, "agent")
-    graph_builder.add_conditional_edges("agent", route_after_agent, {
-        "tool_executor": "tool_executor",
-        "end": END,
+    graph_builder.add_edge(START, NODE_ALIGNMENT_CHECK)
+    graph_builder.add_conditional_edges(NODE_ALIGNMENT_CHECK, route_after_alignment, {
+        NODE_AGENT: NODE_AGENT,
+        END_LABEL: END,
     })
-    graph_builder.add_edge("tool_executor", "agent")
+    graph_builder.add_conditional_edges(NODE_AGENT, route_after_agent, {
+        NODE_TOOL_EXECUTOR: NODE_TOOL_EXECUTOR,
+        END_LABEL: END,
+    })
+    graph_builder.add_edge(NODE_TOOL_EXECUTOR, NODE_AGENT)
 
     from langgraph.checkpoint.memory import MemorySaver
     memory = MemorySaver()

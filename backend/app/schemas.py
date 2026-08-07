@@ -18,6 +18,8 @@ class GraphState(TypedDict):
     pending_tool_calls: int
     pending_tool_calls_data: list[dict]
     called_tools: list[str]
+    rejected_reason: str
+    alignment_score: float
 
 
 # --- Enums ---
