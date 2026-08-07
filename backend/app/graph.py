@@ -405,8 +405,7 @@ def build_graph() -> CompiledStateGraph:
     graph_builder.add_node("memory_updater", memory_updater)
 
     graph_builder.add_edge(START, "memory_loader")
-    graph_builder.add_edge("memory_loader", "agent")
-    graph_builder.add_edge(START, NODE_ALIGNMENT_CHECK)
+    graph_builder.add_edge("memory_loader", NODE_ALIGNMENT_CHECK)
     graph_builder.add_conditional_edges(NODE_ALIGNMENT_CHECK, route_after_alignment, {
         NODE_AGENT: NODE_AGENT,
         END_LABEL: END,
