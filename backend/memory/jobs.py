@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 from app.logging import get_logger
 from memory.db import get_conn
+from memory.db import init_db
 
 log = get_logger(__name__)
 
@@ -297,6 +298,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = _build_arg_parser()
     args = parser.parse_args()
+
+    db_path = init_db()
+    log.info(f"Memory worker schema ready: {db_path}")
 
     if args.once:
         result = process_pending_jobs(batch_size=max(1, int(args.batch_size)))

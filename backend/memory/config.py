@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 
@@ -20,4 +21,7 @@ DEFAULT_MEMORY_DB_PATH = (
 
 
 def resolve_memory_db_path() -> Path:
+    configured_path = os.getenv("MEMORY_DATABASE_PATH", "").strip()
+    if configured_path:
+        return Path(configured_path).resolve()
     return DEFAULT_MEMORY_DB_PATH

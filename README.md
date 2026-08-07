@@ -378,6 +378,7 @@ Set in `backend/.env` (copied from `.env.example` by setup.sh):
 | `STRUCTURED_LOGGING_PCT` | yes | - | The percentage of requests that get structured logging |
 | `MEMORY_ENABLED` | no | `false` | (bool) Enable LLM memory of user or not |
 | `MEMORY_STRICT_MODE` | no | `true` | (bool) If true and memory enabled, will fail startup if memory db not found, else false |
+| `MEMORY_DATABASE_PATH` | no | `data/memory.db` | SQLite file path |
 
 8. Local testing
 
