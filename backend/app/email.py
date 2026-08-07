@@ -34,12 +34,15 @@ def send_verification_email(to_email: str, code: str) -> bool:
     msg.attach(MIMEText(html, "html"))
 
     try:
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as server:
             server.starttls()
             server.login(settings.smtp_user, settings.smtp_password)
             server.send_message(msg)
         log.info("Verification email sent to %s", to_email)
         return True
+    except TimeoutError:
+        log.error("Timeout reached while sending email to %s", to_email)
+        return False
     except Exception as e:
         log.error("Failed to send email to %s: %s", to_email, e)
         return False

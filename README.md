@@ -307,7 +307,7 @@ SMTP_FROM=you@gmail.com
 
 ### 3. Run locally
 
-Two terminals:
+Two terminals (memory OFF profile):
 
 ```bash
 # terminal 1 — backend (http://127.0.0.1:8000)
@@ -318,6 +318,19 @@ cd frontend && npm run dev
 ```
 
 Open http://localhost:5173, enter your email, and start chatting. The Vite dev server proxies `/api` requests to the backend.
+
+Memory ON profile adds one-time bootstrap/seed and a third terminal:
+
+```bash
+# one-time bootstrap
+cd backend && uv run python -c "from memory.db import init_db; print(init_db())"
+
+# optional starter seed data
+cd backend && uv run python -m memory.seed
+
+# terminal 3 - memory worker
+cd backend && uv run python -m memory.jobs --poll-interval 2 --batch-size 20
+```
 
 ### 4. Database
 
@@ -377,9 +390,13 @@ Set in `backend/.env` (copied from `.env.example` by setup.sh):
 | `DATABASE_PATH` | no | `data/homework_helper.db` | SQLite file path |
 | `DEBUG_DATABASE_PATH` | no | `data/debug.db` | Debug page SQLite file path |
 | `BACKEND_URL` | no | `http://127.0.0.1:8000` | Frontend→backend URL (set in Docker) |
+| `STRUCTURED_LOGGING_PCT` | yes | - | The percentage of requests that get structured logging |
 | `STRUCTURED_LOGGING_PCT` | yes | - | Percentage of requests to persist a full structured trace. each request buffers its log events in memory and commits them all (or discards all) as one unit when it ends; `force_structured_logger()` mid-request commits the whole trace regardless of sampling |
 | `EMBEDDING_MODEL` | no | `sentence-transformers/all-MiniLM-L6-v2` | Local embedding model used for the homework-alignment gate |
 | `HOMEWORK_ALIGNMENT_THRESHOLD` | no | `0.4` | Min cosine similarity to the homework corpus for a request to pass the alignment gate |
+| `MEMORY_ENABLED` | no | `false` | (bool) Enable LLM memory of user or not |
+| `MEMORY_STRICT_MODE` | no | `true` | (bool) If true and memory enabled, will fail startup if memory db not found, else false |
+| `MEMORY_DATABASE_PATH` | no | `data/memory.db` | SQLite file path |
 
 8. Local testing
 

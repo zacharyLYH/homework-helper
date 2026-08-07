@@ -6,6 +6,7 @@ from app.routes.debug import router as debug_router
 from app.routes.health import router as health_router
 from app.routes.subjects_chats import router as subjects_chats_router
 from app.routes.tools import router as tools_router
+from memory.routes import router as memory_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router)
@@ -14,3 +15,4 @@ api_router.include_router(chat_router)
 api_router.include_router(tools_router)
 api_router.include_router(debug_router)
 api_router.include_router(subjects_chats_router)
+api_router.include_router(memory_router)

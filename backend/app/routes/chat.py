@@ -3,7 +3,7 @@ import json
 import uuid
 from typing import AsyncGenerator
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -139,13 +139,19 @@ def _rejection_reply(reason: str) -> str:
 
 
 @router.post("/api/chat/stream")
-async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
+async def chat_stream(req: ChatRequest, request: Request, user: User = Depends(get_current_user)):
     thread_id = str(uuid.uuid4())
 
     structured_log("chat_request", message=req.message, message_length=len(req.message), chat_id=req.chat_id, thread_id=thread_id, has_image=bool(req.image))
     log.info("Chat stream request: thread_id=%s, chat_id=%s, message_length=%d", thread_id, req.chat_id, len(req.message))
 
     lc_messages = _build_lc_messages(req)
+    subject_id: int | None = None
+    if req.chat_id:
+        chat = get_chat(req.chat_id)
+        if chat is not None:
+            subject_id = chat.subject_id
+
     initial_state = {
         STATE_MESSAGES: lc_messages,
         STATE_MODEL: "unknown",
@@ -154,7 +160,19 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
         STATE_CALLED_TOOLS: [],
         STATE_REJECTED_REASON: "",
         STATE_ALIGNMENT_SCORE: 0.0,
+        "user_id": user.id,
+        "subject_id": subject_id,
+        "memory_context": "",
+        "memory_loaded": False,
+        "memory_enabled": bool(getattr(request.app.state, "memory_enabled", False)),
     }
+    log.info(
+        "Chat memory mode: enabled=%s reason=%s user_id=%s subject_id=%s",
+        initial_state["memory_enabled"],
+        getattr(request.app.state, "memory_status_reason", "unknown"),
+        user.id,
+        subject_id,
+    )
     config = RunnableConfig(configurable={"thread_id": thread_id})
 
     async def event_generator():
@@ -178,6 +196,15 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
                 ):
                     node_name = event.get("metadata", {}).get("langgraph_node", "")
 
+                    if node_name in {"memory_loader", "memory_updater"} and event["event"] in {
+                        "on_chain_start",
+                        "on_chain_end",
+                    }:
+                        log.info(
+                            "Graph memory node event: node=%s event=%s",
+                            node_name,
+                            event["event"],
+                        )
                     if node_name == NODE_ALIGNMENT_CHECK and event["event"] == "on_chain_end":
                         output = event["data"].get("output") or {}
                         if isinstance(output, dict):

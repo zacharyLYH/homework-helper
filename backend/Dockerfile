@@ -12,7 +12,8 @@ RUN uv sync --frozen --no-dev
 # and baked into the image so alignment never hits the network at runtime.
 COPY models/ ./models/
 
-COPY . .
+COPY app/ ./app/
+COPY memory/ ./memory/
 
 EXPOSE 8000
 

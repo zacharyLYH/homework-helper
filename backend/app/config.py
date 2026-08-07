@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     debug_database_path: str = ""
     log_level: str = "INFO"
     environment: str = "dev"
+    memory_enabled: bool = False
+    memory_strict_mode: bool = True
 
     #TODO: Replace with actual models to use in production
     available_models: list[str] = [

@@ -18,6 +18,11 @@ class GraphState(TypedDict):
     pending_tool_calls: int
     pending_tool_calls_data: list[dict]
     called_tools: list[str]
+    user_id: int | None
+    subject_id: int | None
+    memory_context: str
+    memory_loaded: bool
+    memory_enabled: bool
     rejected_reason: str
     alignment_score: float
 
@@ -53,6 +58,7 @@ class HealthResponse(BaseModel):
     status: str
     model: str
     graph_compiled: bool
+    memory_enabled: bool
 
 
 # --- Database Models ---

@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from app.config import settings
 from app.graph import compiled_graph
@@ -13,9 +13,10 @@ async def root():
 
 
 @router.get("/health", response_model=HealthResponse)
-async def health():
+async def health(request: Request):
     return HealthResponse(
         status="ok",
         model=settings.openrouter_model,
         graph_compiled=compiled_graph is not None,
+        memory_enabled=bool(getattr(request.app.state, "memory_enabled", False)),
     )

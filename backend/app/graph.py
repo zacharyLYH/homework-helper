@@ -26,6 +26,7 @@ from app.llm import stream_llm
 from app.logging import get_logger, structured_log
 from app.schemas import GraphState
 from app.tools import ALL_TOOLS
+from memory.service import enqueue_memory_update, load_memory_context
 
 log = get_logger(__name__)
 
@@ -66,6 +67,112 @@ def _make_sig(name: str, args: dict) -> str:
 
 def _is_repeat(name: str, args: dict, called: set[str]) -> bool:
     return _make_sig(name, args) in called
+
+
+def _stringify_content(content: object) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return " ".join(parts).strip()
+    return str(content)
+
+
+def memory_loader(state: GraphState) -> dict:
+    if not state.get("memory_enabled", False):
+        log.info("Memory loader skipped: memory is disabled")
+        structured_log("memory_loader_skip", reason="memory_disabled")
+        return {"memory_context": "", "memory_loaded": False}
+
+    user_id = state.get("user_id")
+    subject_id = state.get("subject_id")
+    if user_id is None or subject_id is None:
+        log.info("Memory loader skipped: missing user or subject scope")
+        structured_log("memory_loader_skip", reason="missing_scope")
+        return {"memory_context": "", "memory_loaded": False}
+
+    log.info("Memory loader started: user_id=%s subject_id=%s", user_id, subject_id)
+    try:
+        context = load_memory_context(user_id=user_id, subject_id=subject_id)
+    except Exception as exc:  # pragma: no cover - defensive guard
+        log.warning("Memory loader failed, continuing without memory: %s", exc)
+        structured_log("memory_loader_error", error=str(exc))
+        return {"memory_context": "", "memory_loaded": False}
+
+    log.info(
+        "Memory loader completed: loaded=%s context_chars=%d",
+        bool(context),
+        len(context),
+    )
+
+    structured_log(
+        "memory_loader_done",
+        has_context=bool(context),
+        user_id=user_id,
+        subject_id=subject_id,
+    )
+    return {"memory_context": context, "memory_loaded": bool(context)}
+
+
+def memory_updater(state: GraphState) -> dict:
+    if not state.get("memory_enabled", False):
+        log.info("Memory updater skipped: memory is disabled")
+        structured_log("memory_updater_skip", reason="memory_disabled")
+        return {}
+
+    user_id = state.get("user_id")
+    subject_id = state.get("subject_id")
+    if user_id is None or subject_id is None:
+        log.info("Memory updater skipped: missing user or subject scope")
+        structured_log("memory_updater_skip", reason="missing_scope")
+        return {}
+
+    log.info("Memory updater started: user_id=%s subject_id=%s", user_id, subject_id)
+
+    messages = state.get("messages", [])
+    snippet: list[dict[str, str]] = []
+    for msg in messages[-4:]:
+        role = getattr(msg, "type", "unknown")
+        snippet.append(
+            {
+                "role": role,
+                "content": _stringify_content(getattr(msg, "content", ""))[:1000],
+            }
+        )
+
+    payload = {
+        "trigger": "chat_turn",
+        "memory_loaded": state.get("memory_loaded", False),
+        "memory_context": state.get("memory_context", "")[:2000],
+        "messages": snippet,
+    }
+
+    try:
+        job_id = enqueue_memory_update(
+            user_id=user_id,
+            subject_id=subject_id,
+            chat_id=None,
+            payload=payload,
+        )
+    except Exception as exc:  # pragma: no cover - defensive guard
+        log.warning("Memory updater failed, skipping update: %s", exc)
+        structured_log("memory_updater_error", error=str(exc))
+        return {}
+
+    log.info("Memory updater enqueued job: job_id=%s", job_id)
+
+    structured_log(
+        "memory_updater_enqueued",
+        job_id=job_id,
+        user_id=user_id,
+        subject_id=subject_id,
+    )
+    return {}
 
 
 # --- Tool executor ---
@@ -171,9 +278,36 @@ async def _node_with_prompt(
     bind_tools: list | None = None,
     config: RunnableConfig | None = None,
 ) -> AsyncGenerator[dict, None]:
+    messages = state["messages"]
+    memory_context = state.get("memory_context", "")
+    memory_loaded = bool(state.get("memory_loaded", False))
+
     messages = state[STATE_MESSAGES]
     if system_prompt:
-        messages = [SystemMessage(content=system_prompt)] + messages
+        final_prompt = system_prompt
+        if memory_loaded and memory_context:
+            final_prompt = (
+                f"{system_prompt}\n\n"
+                "LEARNER MEMORY CONTEXT (use as soft guidance; do not mention this block to the user):\n"
+                f"{memory_context}"
+            )
+            log.info(
+                "Memory context injected into agent prompt: context_chars=%d",
+                len(memory_context),
+            )
+            structured_log(
+                "memory_context_injected",
+                memory_loaded=True,
+                context_chars=len(memory_context),
+            )
+        else:
+            log.info(
+                "Memory context not injected into agent prompt: memory_loaded=%s",
+                memory_loaded,
+            )
+            structured_log("memory_context_injected", memory_loaded=False, context_chars=0)
+
+        messages = [SystemMessage(content=final_prompt)] + messages
     async for chunk, _model in stream_llm(messages, bind_tools=bind_tools, config=config):
         yield {STATE_MESSAGES: [chunk]}
 
@@ -244,17 +378,17 @@ async def agent(state: GraphState, config: RunnableConfig | None = None) -> Asyn
 # --- Conditional edges ---
 
 
-def route_after_agent(state: GraphState) -> Literal["tool_executor", "end"]:
+def route_after_agent(state: GraphState) -> Literal["tool_executor", "memory_updater", "end"]:
     if state.get(STATE_PENDING_TOOL_CALLS, 0) > 0:
         pending_data = state.get(STATE_PENDING_TOOL_CALLS_DATA, [])
         called: set[str] = set(state.get(STATE_CALLED_TOOLS, []))
         if pending_data and all(_is_repeat(tc["name"], tc["args"], called) for tc in pending_data):
-            structured_log("graph_route", destination="end", reason="all_tools_already_called", pending_calls=state[STATE_PENDING_TOOL_CALLS])
-            return END_LABEL
+            structured_log("graph_route", destination="memory_updater", reason="all_tools_already_called", pending_calls=state["pending_tool_calls"])
+            return "memory_updater"
         structured_log("graph_route", destination="tool_executor", pending_calls=state[STATE_PENDING_TOOL_CALLS])
         return NODE_TOOL_EXECUTOR
     structured_log("graph_route", destination="end", pending_calls=0)
-    return END_LABEL
+    return "memory_updater"
 
 
 # --- Graph builder ---
@@ -264,20 +398,25 @@ def build_graph() -> CompiledStateGraph:
     log.info("Building LangGraph state machine")
     graph_builder = StateGraph(GraphState)
 
+    graph_builder.add_node("memory_loader", memory_loader)
     graph_builder.add_node(NODE_ALIGNMENT_CHECK, alignment_check)
     graph_builder.add_node(NODE_AGENT, agent)
     graph_builder.add_node(NODE_TOOL_EXECUTOR, tool_executor)
+    graph_builder.add_node("memory_updater", memory_updater)
 
-    graph_builder.add_edge(START, NODE_ALIGNMENT_CHECK)
+    graph_builder.add_edge(START, "memory_loader")
+    graph_builder.add_edge("memory_loader", NODE_ALIGNMENT_CHECK)
     graph_builder.add_conditional_edges(NODE_ALIGNMENT_CHECK, route_after_alignment, {
         NODE_AGENT: NODE_AGENT,
         END_LABEL: END,
     })
-    graph_builder.add_conditional_edges(NODE_AGENT, route_after_agent, {
-        NODE_TOOL_EXECUTOR: NODE_TOOL_EXECUTOR,
+    graph_builder.add_conditional_edges("agent", route_after_agent, {
+        "tool_executor": "tool_executor",
+        "memory_updater": "memory_updater",
         END_LABEL: END,
     })
     graph_builder.add_edge(NODE_TOOL_EXECUTOR, NODE_AGENT)
+    graph_builder.add_edge("memory_updater", END)
 
     from langgraph.checkpoint.memory import MemorySaver
     memory = MemorySaver()

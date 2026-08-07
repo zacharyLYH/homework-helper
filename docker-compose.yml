@@ -8,8 +8,23 @@ services:
     environment:
       - DATABASE_PATH=/app/data/homework_helper.db #volumes is at app/data/... on docker. local dev is just at /data/...
       - DEBUG_DATABASE_PATH=/app/data/debug.db
+      - MEMORY_DATABASE_PATH=/app/data/memory.db
     volumes:
       - ./data:/app/data
+
+  memory-worker:
+    build: ./backend
+    command: ["uv", "run", "python", "-m", "memory.jobs", "--poll-interval", "2", "--batch-size", "20"]
+    env_file:
+      - backend/.env
+    environment:
+      - DATABASE_PATH=/app/data/homework_helper.db
+      - DEBUG_DATABASE_PATH=/app/data/debug.db
+      - MEMORY_DATABASE_PATH=/app/data/memory.db
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - backend
 
   frontend:
     build: ./frontend
