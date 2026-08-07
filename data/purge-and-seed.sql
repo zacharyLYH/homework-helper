@@ -5,6 +5,10 @@ DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS verification_codes;
 DELETE FROM sqlite_sequence;
 
+ATTACH DATABASE 'data/debug.db' AS debug;
+DELETE FROM debug.structured_logs;
+DETACH DATABASE debug;
+
 CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT UNIQUE NOT NULL,

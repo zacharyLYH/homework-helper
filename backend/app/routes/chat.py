@@ -26,7 +26,7 @@ from app.graph import compiled_graph
 from app.llm import title_llm
 from app.logging import get_logger, structured_log
 from app.schemas import ChatRequest, User
-from app.structured_log import force_structured_logger, init_structured_logger
+from app.structured_log import force_structured_logger, get_structured_logger
 
 log = get_logger(__name__)
 router = APIRouter()
@@ -83,7 +83,6 @@ def _save_assistant_message(chat_id: int | None, full_reply: str, model_used: st
         metadata_json=json.dumps(metadata),
         token_count=total_usage["total_tokens"],
     )
-    from app.structured_log import get_structured_logger
     logger = get_structured_logger()
     if logger is not None:
         logger.set_message_id(msg.id)
@@ -143,12 +142,8 @@ def _rejection_reply(reason: str) -> str:
 async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
     thread_id = str(uuid.uuid4())
 
-    sl = init_structured_logger(settings.structured_logging_pct)
-    if sl:
-        log.info("Structured logging ACTIVE for request: %s", thread_id)
-        structured_log("chat_request", message=req.message, message_length=len(req.message), chat_id=req.chat_id, thread_id=thread_id, has_image=bool(req.image))
-    else:
-        log.info("Structured logging SKIPPED for request: %s", thread_id)
+    structured_log("chat_request", message=req.message, message_length=len(req.message), chat_id=req.chat_id, thread_id=thread_id, has_image=bool(req.image))
+    log.info("Chat stream request: thread_id=%s, chat_id=%s, message_length=%d", thread_id, req.chat_id, len(req.message))
 
     lc_messages = _build_lc_messages(req)
     initial_state = {
@@ -254,8 +249,7 @@ async def chat_stream(req: ChatRequest, user: User = Depends(get_current_user)):
         await alignment_done.wait()
 
         if rejection_reason:
-            if sl is None:
-                force_structured_logger()
+            force_structured_logger()
             structured_log(
                 "chat_rejected",
                 message=req.message,

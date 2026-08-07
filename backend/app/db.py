@@ -400,19 +400,12 @@ def list_subjects_with_chat_metadata(user_id: int) -> list[SubjectWithChats]:
 # --- Structured log operations ---
 
 
-def insert_structured_log(type: str, created_at: str, message_id: int | None, log: str, req_id: str) -> None:
+def insert_structured_logs_batch(rows: list[tuple]) -> None:
+    """Insert a batch of (type, created_at, message_id, log, req_id) rows."""
     with get_debug_conn() as conn:
-        conn.execute(
+        conn.executemany(
             "INSERT INTO structured_logs (type, created_at, message_id, log, _req_id) VALUES (?, ?, ?, ?, ?)",
-            (type, created_at, message_id, log, req_id),
-        )
-
-
-def update_structured_log_message_id(req_id: str, message_id: int) -> None:
-    with get_debug_conn() as conn:
-        conn.execute(
-            "UPDATE structured_logs SET message_id = ? WHERE _req_id = ? AND message_id IS NULL",
-            (message_id, req_id),
+            rows,
         )
 
 

@@ -377,7 +377,7 @@ Set in `backend/.env` (copied from `.env.example` by setup.sh):
 | `DATABASE_PATH` | no | `data/homework_helper.db` | SQLite file path |
 | `DEBUG_DATABASE_PATH` | no | `data/debug.db` | Debug page SQLite file path |
 | `BACKEND_URL` | no | `http://127.0.0.1:8000` | Frontend→backend URL (set in Docker) |
-| `STRUCTURED_LOGGING_PCT` | yes | - | The percentage of requests that get structured logging |
+| `STRUCTURED_LOGGING_PCT` | yes | - | Percentage of requests to persist a full structured trace. each request buffers its log events in memory and commits them all (or discards all) as one unit when it ends; `force_structured_logger()` mid-request commits the whole trace regardless of sampling |
 | `EMBEDDING_MODEL` | no | `sentence-transformers/all-MiniLM-L6-v2` | Local embedding model used for the homework-alignment gate |
 | `HOMEWORK_ALIGNMENT_THRESHOLD` | no | `0.4` | Min cosine similarity to the homework corpus for a request to pass the alignment gate |
 

@@ -7,6 +7,7 @@ from app.config import settings
 from app.db import init_db, init_debug_db
 from app.logging import get_logger
 from app.routes import api_router
+from app.structured_log import StructuredTraceMiddleware
 
 log = get_logger(__name__)
 
@@ -21,6 +22,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="homework-helper-backend", version="0.1.0", lifespan=lifespan)
+
+# Must wrap the whole app so streaming responses are fully produced (and the
+# final log events emitted) before the structured trace is committed/discarded.
+app.add_middleware(StructuredTraceMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
