@@ -21,25 +21,95 @@ def _resolve_model_path(name: str) -> str:
 # Representative homework requests, embedded once at startup. A user message is
 # rejected when its cosine similarity to the closest corpus sentence falls below
 # `settings.homework_alignment_threshold`.
+#
+# The corpus is modeled on real student messages mined from the MathMentorDB
+# corpus (5.5M student-tutor exchanges): students rarely write "help me". They
+# paste the problem, describe what they already know, or ask a specific
+# question. Entries below are those recurring patterns, generalized and
+# stripped of math-specific vocabulary so matching stays subject-agnostic and
+# liberal. A few direct "help me" anchors are kept since they still occur.
 HOMEWORK_CORPUS = [
-    "can you help me solve this calculus problem",
-    "explain how to factor this quadratic equation step by step",
-    "help me understand Newton's second law for my physics homework",
-    "how do I find the derivative of this function",
-    "what is the answer to this chemistry homework question",
-    "help me with my economics homework on supply and demand",
-    "guide me through this accounting problem",
-    "help me with my statistics homework",
-    "walk me through this finance problem",
-    "how do I balance this chemical equation",
-    "show me how to work out this probability problem",
-    "help me understand this concept from my math class",
-    "can you check my answer to this homework question",
-    "help me with my homework assignment",
-    "solve this equation and explain each step",
-    "what does this physics formula mean",
-    "help me study for my upcoming math test",
-    "explain this biology question from my homework",
+    # Direct help anchors.
+    "help me with my homework",
+    "help me with this problem",
+    "help me understand this",
+    "help me with my assignment",
+    "walk me through this step by step",
+    "can you help me with this",
+    "i need help with this problem",
+    "someone please help me with this",
+    # Content-first: student pastes the problem and says they are stuck.
+    "i am stuck on this homework question",
+    "i have this problem for homework",
+    "this is the question from my homework",
+    "i have homework questions and i tried them",
+    "this is my homework and i am stuck",
+    "i need help with the question at the top",
+    "i am stuck on this question",
+    "i have been working on this problem",
+    # Task-verb asks (problem-solving verbs, not math-specific).
+    "how do i solve this",
+    "how do i find the answer",
+    "how do i approach this problem",
+    "which formula is used here",
+    "how do i work this out",
+    "what is the next step in this problem",
+    "how do i do this step by step",
+    "what is the first thing i should do",
+    "how do i prove this",
+    "how do i factor this",
+    "how do i simplify this",
+    "how do i integrate this",
+    "how do i differentiate this",
+    "how do i find the derivative of this function",
+    "how do i find the integral of this",
+    "how do i evaluate this expression",
+    "what is the expectation of this",
+    "how do i find this value",
+    "how do i find the area of this",
+    "what is the area of this shape",
+    "show me how to solve this",
+    # "Here is my work" / confirm-my-work.
+    "is my answer correct",
+    "did i do this right",
+    "can someone check my work",
+    "i got an answer, can someone confirm it",
+    "i did the work but i am not sure it is right",
+    "i am looking for someone to confirm my results",
+    "is my reasoning here correct",
+    "i got a different answer, which is right",
+    # Confusion / stuck mid-way.
+    "i do not understand this problem",
+    "i am confused about this question",
+    "i do not remember how to do this",
+    "i am too confused to understand this",
+    "i do not know what to do with the next part",
+    "i solved the first part but not the rest",
+    "i keep getting the wrong answer",
+    "what am i doing wrong",
+    "i am struggling with this",
+    "i do not understand the concept",
+    # Why / clarifying questions.
+    "why is this the answer",
+    "why does this method work",
+    "can you explain why this is correct",
+    "i do not understand why this happens",
+    "is there a simpler way to do this",
+    "what do you mean by that",
+    "am i on the right track",
+    "is this the right approach",
+    # General homework vocabulary.
+    "my homework assignment",
+    "my math homework",
+    "my physics homework",
+    "my chemistry homework",
+    "my biology homework",
+    "my english homework",
+    "my history homework",
+    "my essay i need to write",
+    "my lab report",
+    "my study guide",
+    "my worksheet",
 ]
 
 
