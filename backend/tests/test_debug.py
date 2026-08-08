@@ -114,6 +114,74 @@ async def test_debug_sql_select(client, seed, auth_token):
     assert data["rows"][0]["email"] == "alice@school.edu"
 
 
+async def test_debug_sql_limit_applied(client, seed, auth_token):
+    _seed_main(INITIAL_SEED)
+    headers = _auth_headers(auth_token)
+    resp = await client.post(
+        "/api/debug/sql",
+        json={"sql": "SELECT email FROM users ORDER BY email", "limit": 2},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["row_count"] == 2
+
+
+async def test_debug_sql_user_limit_wins(client, seed, auth_token):
+    _seed_main(INITIAL_SEED)
+    headers = _auth_headers(auth_token)
+    resp = await client.post(
+        "/api/debug/sql",
+        json={"sql": "SELECT email FROM users ORDER BY email LIMIT 1", "limit": 2},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["row_count"] == 1
+
+
+async def test_debug_sql_limit_ignores_comment_and_string(client, seed, auth_token):
+    """LIMIT keywords in comments/strings must not count as a user limit."""
+    _seed_main(INITIAL_SEED)
+    headers = _auth_headers(auth_token)
+    resp = await client.post(
+        "/api/debug/sql",
+        json={"sql": "SELECT 'LIMIT 99' AS note, email FROM users ORDER BY email -- LIMIT 0", "limit": 2},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["row_count"] == 2
+
+
+async def test_debug_sql_limit_skipped_for_non_select(client, auth_token):
+    """The auto-limit must not be appended to DML statements."""
+    headers = _auth_headers(auth_token)
+    resp = await client.post(
+        "/api/debug/sql",
+        json={"sql": "INSERT INTO users (email) VALUES ('a@test.com'), ('b@test.com'), ('c@test.com')", "limit": 2},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["row_count"] == 0
+
+    with get_conn() as conn:
+        count = conn.execute("SELECT COUNT(*) AS c FROM users WHERE email IN ('a@test.com', 'b@test.com', 'c@test.com')").fetchone()["c"]
+        assert count == 3
+
+
+async def test_debug_sql_limit_none_returns_all(client, seed, auth_token):
+    _seed_main(INITIAL_SEED)
+    headers = _auth_headers(auth_token)
+    resp = await client.post(
+        "/api/debug/sql",
+        json={"sql": "SELECT email FROM users ORDER BY email", "limit": None},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["row_count"] == 4
+
+
 async def test_debug_sql_insert(client, auth_token):
     headers = _auth_headers(auth_token)
     resp = await client.post("/api/debug/sql", json={"sql": "INSERT INTO users (email) VALUES ('test@test.com')"}, headers=headers)

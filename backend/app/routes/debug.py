@@ -1,3 +1,5 @@
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
@@ -38,11 +40,35 @@ async def get_messages_endpoint(chat_id: int, user: User = Depends(_require_debu
 
 class SqlRequest(BaseModel):
     sql: str
+    limit: int | None = None
+
+
+_COMMENT_OR_STRING = re.compile(
+    r"""--[^\n]*|/\*.*?\*/|'(?:[^']|'')*'|"(?:[^"]|"")*"|`(?:[^`]|``)*`|\[[^\]]*\]""",
+    re.DOTALL,
+)
+
+
+def _has_top_level_limit(sql: str) -> bool:
+    """Detect a LIMIT clause, ignoring comments and string literals."""
+    stripped = _COMMENT_OR_STRING.sub(" ", sql)
+    return re.search(r"\bLIMIT\b", stripped, re.IGNORECASE) is not None
+
+
+def _apply_limit(sql: str, limit: int | None) -> str:
+    """Append a LIMIT clause unless the user already provided their own."""
+    if not limit or limit <= 0 or _has_top_level_limit(sql):
+        return sql
+    head = sql.lstrip()
+    upper = head[:6].upper()
+    if not (upper.startswith("SELECT") or upper.startswith("WITH")):
+        return sql
+    return f"{sql.rstrip().rstrip(';').rstrip()}\nLIMIT {limit}"
 
 
 @router.post("/api/debug/sql")
 async def execute_sql(req: SqlRequest, user: User = Depends(_require_debug_user)):
-    sql = req.sql.strip()
+    sql = _apply_limit(req.sql.strip(), req.limit)
     if not sql:
         raise HTTPException(status_code=400, detail="Empty SQL")
 

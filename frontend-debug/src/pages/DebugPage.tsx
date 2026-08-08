@@ -16,15 +16,61 @@ import {
   type StructuredLog,
 } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { Play, ChevronRight, Database, Users, BookOpen, MessageSquare, RefreshCw, Activity, ChevronDown, ChevronUp, LogOut } from "lucide-react";
+import {
+  Play,
+  ChevronRight,
+  Database,
+  Users,
+  BookOpen,
+  MessageSquare,
+  RefreshCw,
+  Activity,
+  ChevronDown,
+  ChevronUp,
+  LogOut,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Search,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from "@/components/ui/accordion";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+} from "@/components/ui/dropdown-menu";
 import { ModeToggle } from "@/components/mode-toggle";
 
+const TRUNCATE_LENGTH = 30;
+
+const LIMIT_OPTIONS: { label: string; value: number | null }[] = [
+  { label: "20", value: 20 },
+  { label: "50", value: 50 },
+  { label: "100", value: 100 },
+  { label: "250", value: 250 },
+  { label: "All", value: null },
+];
 
 export default function DebugPage() {
   const navigate = useNavigate();
@@ -39,7 +85,9 @@ export default function DebugPage() {
     <div className="flex flex-col h-screen bg-background">
       <header className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
         <div className="flex items-center gap-3">
-          <h1 className="text-lg font-semibold text-foreground">Debug Console</h1>
+          <h1 className="text-lg font-semibold text-foreground">
+            Debug Console
+          </h1>
           {user && (
             <span className="text-xs text-muted-foreground">{user.email}</span>
           )}
@@ -53,7 +101,10 @@ export default function DebugPage() {
         </div>
       </header>
 
-      <Tabs defaultValue="browser" className="flex-1 flex flex-col overflow-hidden">
+      <Tabs
+        defaultValue="browser"
+        className="flex-1 flex flex-col overflow-hidden"
+      >
         <div className="px-4 pt-2 border-b border-border">
           <TabsList>
             <TabsTrigger value="browser">
@@ -86,9 +137,15 @@ export default function DebugPage() {
 }
 
 function DebugTreeView({
-  users, selectedUser, selectUser,
-  subjects, selectedSubject, selectSubject,
-  chats, selectedChat, selectChat,
+  users,
+  selectedUser,
+  selectUser,
+  subjects,
+  selectedSubject,
+  selectSubject,
+  chats,
+  selectedChat,
+  selectChat,
   loading,
 }: {
   users: User[];
@@ -110,7 +167,9 @@ function DebugTreeView({
           <Button
             variant="ghost"
             className={`w-full justify-start rounded-none px-3 py-2 h-auto ${
-              selectedUser?.id === user.id ? "bg-accent text-accent-foreground" : ""
+              selectedUser?.id === user.id
+                ? "bg-accent text-accent-foreground"
+                : ""
             }`}
             onClick={() => selectUser(user)}
           >
@@ -127,7 +186,9 @@ function DebugTreeView({
                     variant="ghost"
                     size="sm"
                     className={`w-full justify-start rounded-none pl-4 pr-3 py-2 h-auto ${
-                      selectedSubject?.id === subject.id ? "bg-accent text-accent-foreground" : ""
+                      selectedSubject?.id === subject.id
+                        ? "bg-accent text-accent-foreground"
+                        : ""
                     }`}
                     onClick={() => selectSubject(subject)}
                   >
@@ -144,7 +205,9 @@ function DebugTreeView({
                           variant="ghost"
                           size="sm"
                           className={`w-full justify-start rounded-none pl-4 pr-3 py-1.5 h-auto ${
-                            selectedChat?.id === chat.id ? "bg-accent text-accent-foreground" : ""
+                            selectedChat?.id === chat.id
+                              ? "bg-accent text-accent-foreground"
+                              : ""
                           }`}
                           onClick={() => selectChat(chat)}
                         >
@@ -155,17 +218,25 @@ function DebugTreeView({
                     </div>
                   )}
 
-                  {selectedSubject?.id === subject.id && chats.length === 0 && !loading && (
-                    <div className="pl-4 py-2 text-xs text-muted-foreground">No chats</div>
-                  )}
+                  {selectedSubject?.id === subject.id &&
+                    chats.length === 0 &&
+                    !loading && (
+                      <div className="pl-4 py-2 text-xs text-muted-foreground">
+                        No chats
+                      </div>
+                    )}
                 </div>
               ))}
             </div>
           )}
 
-          {selectedUser?.id === user.id && subjects.length === 0 && !loading && (
-            <div className="ml-5 pl-4 py-2 text-xs text-muted-foreground">No subjects</div>
-          )}
+          {selectedUser?.id === user.id &&
+            subjects.length === 0 &&
+            !loading && (
+              <div className="ml-5 pl-4 py-2 text-xs text-muted-foreground">
+                No subjects
+              </div>
+            )}
         </div>
       ))}
     </>
@@ -256,7 +327,9 @@ function BrowserPanel() {
     <div className="flex h-full">
       <div className="w-72 border-r border-border bg-background flex flex-col shrink-0">
         <div className="p-3 border-b border-border flex items-center justify-between">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Data Browser</span>
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Data Browser
+          </span>
           <Button
             variant="ghost"
             size="icon"
@@ -264,7 +337,9 @@ function BrowserPanel() {
             disabled={loading}
             title="Load users"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
+            />
           </Button>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -304,25 +379,37 @@ function BrowserPanel() {
         {selectedChat && messages.length > 0 && (
           <div className="p-4">
             <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">{selectedUser?.email}</span>
+              <span className="font-medium text-foreground">
+                {selectedUser?.email}
+              </span>
               <ChevronRight className="h-3 w-3" />
               <span>{selectedSubject?.name}</span>
               <ChevronRight className="h-3 w-3" />
-              <span className="font-medium text-foreground">{selectedChat.title}</span>
+              <span className="font-medium text-foreground">
+                {selectedChat.title}
+              </span>
               <Badge variant="secondary">{messages.length} messages</Badge>
             </div>
             <div className="space-y-2">
               {messages.map((m) => (
                 <Card key={m.id} className="p-3 shadow-none">
                   <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                    <Badge variant={m.role === "user" ? "default" : "secondary"}>
+                    <Badge
+                      variant={m.role === "user" ? "default" : "secondary"}
+                    >
                       {m.role}
                     </Badge>
                     <span>ID {m.id}</span>
                     <span>{m.created_at}</span>
-                    {m.chat_id > 0 && <span className="text-muted-foreground">chat_id={m.chat_id}</span>}
+                    {m.chat_id > 0 && (
+                      <span className="text-muted-foreground">
+                        chat_id={m.chat_id}
+                      </span>
+                    )}
                   </div>
-                  <p className="text-sm text-foreground whitespace-pre-wrap mt-1">{m.content}</p>
+                  <p className="text-sm text-foreground whitespace-pre-wrap mt-1">
+                    {m.content}
+                  </p>
                 </Card>
               ))}
             </div>
@@ -352,8 +439,12 @@ function BrowserPanel() {
                   >
                     <div className="flex items-center gap-2">
                       <BookOpen className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-medium text-foreground">{s.name}</span>
-                      <Badge variant="outline" className="ml-auto">ID {s.id}</Badge>
+                      <span className="text-sm font-medium text-foreground">
+                        {s.name}
+                      </span>
+                      <Badge variant="outline" className="ml-auto">
+                        ID {s.id}
+                      </Badge>
                     </div>
                   </Card>
                 ))}
@@ -379,7 +470,9 @@ function BrowserPanel() {
                   >
                     <div className="flex items-center gap-2">
                       <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-medium text-foreground">{c.title}</span>
+                      <span className="text-sm font-medium text-foreground">
+                        {c.title}
+                      </span>
                     </div>
                     <div className="text-xs text-muted-foreground mt-1">
                       ID {c.id} · created {c.created_at}
@@ -409,6 +502,9 @@ function SqlPanel() {
   const [result, setResult] = useState<SqlResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [limit, setLimit] = useState<number | null>(20);
+  const limitLabel =
+    LIMIT_OPTIONS.find((o) => o.value === limit)?.label ?? "All";
 
   const handleExecute = async () => {
     if (!sql.trim() || loading) return;
@@ -416,7 +512,7 @@ function SqlPanel() {
     setError("");
     setResult(null);
     try {
-      const r = await executeSql(sql.trim());
+      const r = await executeSql(sql.trim(), limit);
       setResult(r);
     } catch (e: any) {
       setError(e.message);
@@ -437,8 +533,12 @@ function SqlPanel() {
       <div className="border-b border-border bg-background p-4 shrink-0">
         <div className="flex items-center gap-2 mb-2">
           <Database className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium text-foreground">SQL Editor</span>
-          <span className="text-xs text-muted-foreground">— Ctrl+Enter to execute</span>
+          <span className="text-sm font-medium text-foreground">
+            SQL Editor
+          </span>
+          <span className="text-xs text-muted-foreground">
+            — Ctrl+Enter to execute
+          </span>
         </div>
         <div className="flex gap-2">
           <Textarea
@@ -450,14 +550,44 @@ function SqlPanel() {
             className="flex-1 font-mono text-sm resize-none"
             placeholder="SELECT * FROM users"
           />
-          <Button
-            onClick={handleExecute}
-            disabled={loading || !sql.trim()}
-            className="self-start"
-          >
-            <Play className="h-4 w-4" />
-            {loading ? "Running..." : "Run"}
-          </Button>
+          <div className="flex flex-col gap-y-4">
+            <Button
+              onClick={handleExecute}
+              disabled={loading || !sql.trim()}
+              className="w-full cursor-pointer"
+            >
+              <Play className="h-4 w-4" />
+              {loading ? "Running..." : "Run"}
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="secondary" className="w-full cursor-pointer font-medium">
+                  Limit:{" "}
+                  <span className="font-semibold">
+                    {limit === null ? "All" : limit}
+                  </span>
+                  <ChevronDown className="h-4 w-4 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuRadioGroup
+                  value={String(limit ?? "All")}
+                  onValueChange={(v) =>
+                    setLimit(v === "All" ? null : Number(v))
+                  }
+                >
+                  {LIMIT_OPTIONS.map((opt) => (
+                    <DropdownMenuRadioItem
+                      key={opt.label}
+                      value={opt.value === null ? "All" : String(opt.value)}
+                    >
+                      {opt.label}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </div>
 
@@ -470,36 +600,18 @@ function SqlPanel() {
 
         {result && (
           <div>
-            <div className="text-xs text-muted-foreground mb-2">
-              <Badge variant="secondary">
-                {result.row_count} row{result.row_count !== 1 ? "s" : ""} returned
+            <div className="text-xs text-muted-foreground mb-2 flex items-center gap-2">
+              <Badge>
+                {result.row_count} row{result.row_count !== 1 ? "s" : ""}{" "}
+                returned
               </Badge>
             </div>
             {result.columns.length > 0 ? (
-              <Card className="shadow-none overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      {result.columns.map((col) => (
-                        <TableHead key={col}>{col}</TableHead>
-                      ))}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {result.rows.map((row, i) => (
-                      <TableRow key={i}>
-                        {result.columns.map((col) => (
-                          <TableCell key={col} className="font-mono text-xs">
-                            {formatCell(row[col])}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </Card>
+              <SqlResultsTable columns={result.columns} rows={result.rows} />
             ) : (
-              <div className="text-sm text-muted-foreground">Query executed successfully (no results)</div>
+              <div className="text-sm text-muted-foreground">
+                Query executed successfully (no results)
+              </div>
             )}
           </div>
         )}
@@ -517,22 +629,22 @@ function SqlPanel() {
 // --- Trace Panel ---
 
 const TYPE_META: Record<string, { component: string; color: string }> = {
-  chat_request:     { component: "Chat", color: "#3b82f6" },
-  chat_response:    { component: "Chat", color: "#3b82f6" },
-  agent_start:      { component: "Agent", color: "#22c55e" },
-  agent_tool_call:  { component: "Agent", color: "#22c55e" },
-  tool_input:       { component: "Tool", color: "#f59e0b" },
-  tool_output:      { component: "Tool", color: "#f59e0b" },
-  tool_result:      { component: "Tool", color: "#f59e0b" },
-  tool_artifact:    { component: "Tool", color: "#f59e0b" },
-  llm_request:      { component: "LLM", color: "#a855f7" },
+  chat_request: { component: "Chat", color: "#3b82f6" },
+  chat_response: { component: "Chat", color: "#3b82f6" },
+  agent_start: { component: "Agent", color: "#22c55e" },
+  agent_tool_call: { component: "Agent", color: "#22c55e" },
+  tool_input: { component: "Tool", color: "#f59e0b" },
+  tool_output: { component: "Tool", color: "#f59e0b" },
+  tool_result: { component: "Tool", color: "#f59e0b" },
+  tool_artifact: { component: "Tool", color: "#f59e0b" },
+  llm_request: { component: "LLM", color: "#a855f7" },
   llm_stream_start: { component: "LLM", color: "#a855f7" },
-  llm_stream_end:   { component: "LLM", color: "#a855f7" },
-  llm_tool_call:    { component: "LLM", color: "#a855f7" },
-  llm_quota_error:  { component: "LLM", color: "#ef4444" },
+  llm_stream_end: { component: "LLM", color: "#a855f7" },
+  llm_tool_call: { component: "LLM", color: "#a855f7" },
+  llm_quota_error: { component: "LLM", color: "#ef4444" },
   llm_all_models_exhausted: { component: "LLM", color: "#ef4444" },
-  graph_route:      { component: "Graph", color: "#64748b" },
-  stream_error:     { component: "System", color: "#ef4444" },
+  graph_route: { component: "Graph", color: "#64748b" },
+  stream_error: { component: "System", color: "#ef4444" },
 };
 
 function getSpanMeta(type: string) {
@@ -568,7 +680,13 @@ type WaterfallRow = {
   summary: string;
 };
 
-function WaterfallTrace({ logs, message }: { logs: StructuredLog[]; message: Message }) {
+function WaterfallTrace({
+  logs,
+  message,
+}: {
+  logs: StructuredLog[];
+  message: Message;
+}) {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
 
   const rows: WaterfallRow[] = useMemo(() => {
@@ -590,12 +708,24 @@ function WaterfallTrace({ logs, message }: { logs: StructuredLog[]; message: Mes
         <Badge variant={message.role === "user" ? "default" : "secondary"}>
           {message.role}
         </Badge>
-        <span className="font-medium text-foreground">Message #{message.id}</span>
+        <span className="font-medium text-foreground">
+          Message #{message.id}
+        </span>
         <span>{message.created_at}</span>
-        {message.subject_name && <span className="text-foreground/60">{message.subject_name}</span>}
-        {message.chat_title && <span className="truncate text-foreground/60">{message.chat_title}</span>}
-        {message.user_email && <span className="text-foreground/40">{message.user_email}</span>}
-        <span className="truncate ml-auto text-foreground/60">{message.content.slice(0, 100)}</span>
+        {message.subject_name && (
+          <span className="text-foreground/60">{message.subject_name}</span>
+        )}
+        {message.chat_title && (
+          <span className="truncate text-foreground/60">
+            {message.chat_title}
+          </span>
+        )}
+        {message.user_email && (
+          <span className="text-foreground/40">{message.user_email}</span>
+        )}
+        <span className="truncate ml-auto text-foreground/60">
+          {message.content.slice(0, 100)}
+        </span>
       </div>
 
       {/* Timeline header */}
@@ -604,8 +734,15 @@ function WaterfallTrace({ logs, message }: { logs: StructuredLog[]; message: Mes
         <div className="flex-1 relative h-4">
           <div className="absolute inset-0 flex">
             {[0, 25, 50, 75, 100].map((pct) => (
-              <div key={pct} className="flex-1 border-l border-border/30 first:border-l-0 text-center">
-                {pct > 0 && <span className="block pt-0.5">+{Math.round(maxMs * pct / 100)}ms</span>}
+              <div
+                key={pct}
+                className="flex-1 border-l border-border/30 first:border-l-0 text-center"
+              >
+                {pct > 0 && (
+                  <span className="block pt-0.5">
+                    +{Math.round((maxMs * pct) / 100)}ms
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -617,7 +754,15 @@ function WaterfallTrace({ logs, message }: { logs: StructuredLog[]; message: Mes
       <div className="space-y-0.5">
         {rows.map((row, i) => {
           const leftPct = maxMs > 0 ? (row.offsetMs / maxMs) * 100 : 0;
-          const barWidth = Math.max(0.5, (maxMs > 0 ? ((i < rows.length - 1 ? rows[i + 1].offsetMs : maxMs) - row.offsetMs) / maxMs * 100 : 0.5));
+          const barWidth = Math.max(
+            0.5,
+            maxMs > 0
+              ? (((i < rows.length - 1 ? rows[i + 1].offsetMs : maxMs) -
+                  row.offsetMs) /
+                  maxMs) *
+                  100
+              : 0.5,
+          );
           const isExpanded = expandedIdx === i;
 
           return (
@@ -632,8 +777,12 @@ function WaterfallTrace({ logs, message }: { logs: StructuredLog[]; message: Mes
                     className="w-2 h-2 rounded-full shrink-0"
                     style={{ backgroundColor: row.meta.color }}
                   />
-                  <span className="font-medium text-foreground/80 truncate">{row.meta.component}</span>
-                  <span className="text-muted-foreground truncate">{row.log.type.replace(/^(chat|agent|tool|llm|graph)_/, "")}</span>
+                  <span className="font-medium text-foreground/80 truncate">
+                    {row.meta.component}
+                  </span>
+                  <span className="text-muted-foreground truncate">
+                    {row.log.type.replace(/^(chat|agent|tool|llm|graph)_/, "")}
+                  </span>
                 </div>
 
                 {/* Timeline bar */}
@@ -669,7 +818,9 @@ function WaterfallTrace({ logs, message }: { logs: StructuredLog[]; message: Mes
               {/* Expandable row: summary + raw JSON */}
               {isExpanded && (
                 <div className="ml-[148px] mb-1 p-2 rounded bg-muted/30 border border-border/50 text-xs font-mono">
-                  <div className="text-muted-foreground mb-1 truncate">{row.summary}</div>
+                  <div className="text-muted-foreground mb-1 truncate">
+                    {row.summary}
+                  </div>
                   <pre className="text-[10px] text-muted-foreground/70 whitespace-pre-wrap max-h-48 overflow-auto">
                     {formatLogPretty(row.log.log)}
                   </pre>
@@ -730,13 +881,23 @@ function TracePanel() {
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
             Messages with traces
           </span>
-          <Button variant="ghost" size="icon" onClick={loadMessages} disabled={loadingMsgs} title="Refresh">
-            <RefreshCw className={`h-3.5 w-3.5 ${loadingMsgs ? "animate-spin" : ""}`} />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={loadMessages}
+            disabled={loadingMsgs}
+            title="Refresh"
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${loadingMsgs ? "animate-spin" : ""}`}
+            />
           </Button>
         </div>
         <div className="flex-1 overflow-y-auto">
           {loadingMsgs && (
-            <div className="p-4 text-center text-xs text-muted-foreground">Loading...</div>
+            <div className="p-4 text-center text-xs text-muted-foreground">
+              Loading...
+            </div>
           )}
           {!loadingMsgs && messages.length === 0 && (
             <div className="p-4 text-center text-xs text-muted-foreground">
@@ -752,18 +913,31 @@ function TracePanel() {
               }`}
             >
               <div className="flex items-center gap-2 mb-1">
-                <Badge variant={msg.role === "user" ? "default" : "secondary"} className="text-[10px] px-1.5 py-0">
+                <Badge
+                  variant={msg.role === "user" ? "default" : "secondary"}
+                  className="text-[10px] px-1.5 py-0"
+                >
                   {msg.role}
                 </Badge>
-                <span className="text-xs font-medium text-foreground">#{msg.id}</span>
+                <span className="text-xs font-medium text-foreground">
+                  #{msg.id}
+                </span>
                 <span className="text-[10px] text-muted-foreground ml-auto">
-                  {msg.subject_name ? msg.subject_name : msg.chat_id && `chat=${msg.chat_id}`}
+                  {msg.subject_name
+                    ? msg.subject_name
+                    : msg.chat_id && `chat=${msg.chat_id}`}
                 </span>
               </div>
-              <p className="text-[11px] text-muted-foreground truncate mb-0.5">{msg.content}</p>
+              <p className="text-[11px] text-muted-foreground truncate mb-0.5">
+                {msg.content}
+              </p>
               <div className="flex items-center gap-2 text-[9px] text-muted-foreground/60">
-                {msg.chat_title && <span className="truncate">{msg.chat_title}</span>}
-                {msg.user_email && <span className="truncate">{msg.user_email}</span>}
+                {msg.chat_title && (
+                  <span className="truncate">{msg.chat_title}</span>
+                )}
+                {msg.user_email && (
+                  <span className="truncate">{msg.user_email}</span>
+                )}
               </div>
             </button>
           ))}
@@ -807,8 +981,158 @@ function TracePanel() {
   );
 }
 
-function formatCell(value: unknown): string {
+function formatCell(value: unknown, truncate: boolean = true): string {
   if (value === null || value === undefined) return "NULL";
-  if (typeof value === "string" && value.length > 200) return value.slice(0, 200) + "...";
+  if (typeof value === "object") return JSON.stringify(value);
+  const s = String(value);
+  if (truncate && s.length > TRUNCATE_LENGTH) return s.slice(0, TRUNCATE_LENGTH) + "...";
+  return s;
+}
+
+function formatCellFull(value: unknown): string {
+  if (value === null || value === undefined) return "NULL";
+  if (typeof value === "object") return JSON.stringify(value, null, 2);
   return String(value);
+}
+
+function compareValues(a: unknown, b: unknown): number {
+  if (a === b) return 0;
+  if (a === null || a === undefined) return -1;
+  if (b === null || b === undefined) return 1;
+  if (typeof a === "number" && typeof b === "number") return a - b;
+  const sa = String(a);
+  const sb = String(b);
+  const na = Number(sa);
+  const nb = Number(sb);
+  if (sa !== "" && sb !== "" && !Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+  return sa.localeCompare(sb);
+}
+
+function SqlResultsTable({
+  columns,
+  rows,
+}: {
+  columns: string[];
+  rows: Record<string, unknown>[];
+}) {
+  const [query, setQuery] = useState("");
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const filtered = useMemo(() => {
+    let out = rows;
+    const q = query.trim().toLowerCase();
+    if (q) {
+      out = out.filter((row) =>
+        columns.some((col) => {
+          const v = row[col];
+          return v !== null && v !== undefined && String(v).toLowerCase().includes(q);
+        })
+      );
+    }
+    if (sortKey) {
+      const dir = sortDir === "asc" ? 1 : -1;
+      out = [...out].sort((x, y) => compareValues(x[sortKey], y[sortKey]) * dir);
+    }
+    return out;
+  }, [columns, rows, query, sortKey, sortDir]);
+
+  const toggleSort = (col: string) => {
+    if (sortKey === col) {
+      if (sortDir === "asc") setSortDir("desc");
+      else {
+        setSortKey(null);
+        setSortDir("asc");
+      }
+    } else {
+      setSortKey(col);
+      setSortDir("asc");
+    }
+  };
+
+  return (
+    <div>
+      <div className="relative mb-2 max-w-sm">
+        <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search rows..."
+          className="pl-8 h-8 text-xs"
+        />
+      </div>
+      <Card className="shadow-none">
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {columns.map((col) => (
+                  <TableHead key={col}>
+                    <button
+                      type="button"
+                      onClick={() => toggleSort(col)}
+                      className="inline-flex items-center gap-1 text-xs font-medium hover:text-foreground"
+                    >
+                      {col}
+                      {sortKey === col ? (
+                        sortDir === "asc" ? (
+                          <ArrowUp className="h-3 w-3" />
+                        ) : (
+                          <ArrowDown className="h-3 w-3" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />
+                      )}
+                    </button>
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={columns.length} className="text-center text-muted-foreground text-xs py-8">
+                    No rows match your search
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filtered.map((row, i) => (
+                  <TableRow key={i}>
+                    {columns.map((col) => {
+                      const full = formatCellFull(row[col]);
+                      const truncated = formatCell(row[col], true);
+                      const needsAccordion = full !== truncated;
+                      return (
+                        <TableCell key={col} className="font-mono text-xs align-top max-w-[300px] min-w-[80px]">
+                          {needsAccordion ? (
+                            <Accordion type="single" collapsible className="w-full">
+                              <AccordionItem value={col} className="border-none">
+                                <AccordionTrigger className="py-0 text-xs font-mono hover:no-underline gap-2">
+                                  <span className="flex-1 min-w-0 truncate">{truncated}</span>
+                                </AccordionTrigger>
+                                <AccordionContent className="pb-0 text-xs pt-1">
+                                  <div className="whitespace-pre-wrap break-all max-h-72 overflow-y-auto">{full}</div>
+                                </AccordionContent>
+                              </AccordionItem>
+                            </Accordion>
+                          ) : (
+                            <span className="block max-w-full truncate">{full}</span>
+                          )}
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </Card>
+      {query && (
+        <div className="mt-2 text-xs text-muted-foreground">
+          Showing {filtered.length} of {rows.length} rows
+        </div>
+      )}
+    </div>
+  );
 }

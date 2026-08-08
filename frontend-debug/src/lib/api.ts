@@ -138,11 +138,11 @@ export async function getMessagesWithLogs(): Promise<Message[]> {
   return res.json();
 }
 
-export async function executeSql(sql: string): Promise<SqlResult> {
+export async function executeSql(sql: string, limit?: number | null): Promise<SqlResult> {
   const res = await fetch(`${API_BASE}/debug/sql`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sql }),
+    body: JSON.stringify({ sql, limit: limit ?? null }),
     credentials: "include",
   });
   if (!res.ok) {
