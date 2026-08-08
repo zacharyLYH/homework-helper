@@ -224,7 +224,16 @@ def create_diagram(nodes: list[NodeSpec], edges: list[EdgeSpec]) -> str:
     """Create a diagram from semantic nodes and edges. Layout is automatic — you never specify coordinates.
     nodes: {id, label, kind (box|ellipse|diamond)}. edges: {from_id, to_id, label?, directed?}.
     The result renders on the student's canvas automatically."""
-    structured_log("tool_input", tool="create_diagram", node_count=len(nodes), edge_count=len(edges))
+    structured_log(
+        "tool_input",
+        tool="create_diagram",
+        node_count=len(nodes),
+        edge_count=len(edges),
+        node_kinds={k: sum(1 for n in nodes if n.kind == k) for k in {n.kind for n in nodes}},
+        edge_directed=sum(1 for e in edges if e.directed),
+        node_labels=[n.label for n in nodes],
+        edge_labels=[e.label for e in edges if e.label],
+    )
     return _serialize(_layout_diagram(nodes, edges), "create_diagram")
 
 
@@ -233,7 +242,12 @@ def draw_elements(elements: list[ElementSpec]) -> str:
     """Draw arbitrary primitives at explicit positions. For freehand sketches, plots, geometry, and function graphs.
     element types: line (points), arrow (from_pos,to_pos), rect (x,y,w,h), ellipse (cx,cy,rx,ry), path (d), text (x,y,text).
     The result renders on the student's canvas automatically."""
-    structured_log("tool_input", tool="draw_elements", element_count=len(elements))
+    structured_log(
+        "tool_input",
+        tool="draw_elements",
+        element_count=len(elements),
+        element_types={t: sum(1 for el in elements if el.type == t) for t in {el.type for el in elements}},
+    )
     return _serialize(elements, "draw_elements")
 
 

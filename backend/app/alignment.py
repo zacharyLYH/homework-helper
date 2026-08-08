@@ -110,6 +110,10 @@ HOMEWORK_CORPUS = [
     "my lab report",
     "my study guide",
     "my worksheet",
+    # Diagram drawing.
+    "draw a sketch of",
+    "create a diagram",
+    "i need help visualizing"
 ]
 
 

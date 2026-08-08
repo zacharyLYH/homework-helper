@@ -39,7 +39,7 @@ async def stream_llm(
     config: RunnableConfig | None = None,
 ) -> AsyncGenerator[tuple[AIMessageChunk, str], None]:
     last_err: Exception = RuntimeError("No models configured")
-    for model in _chat_models():
+    for attempt, model in enumerate(_chat_models(), 1):
         llm = _make_llm(model)
         bound = llm.bind_tools(bind_tools) if bind_tools else llm
 
@@ -64,7 +64,7 @@ async def stream_llm(
 
         try:
             log.debug("Streaming model %s", model)
-            structured_log("llm_stream_start", model=model)
+            structured_log("llm_stream_start", model=model, attempt=attempt)
             async for chunk in bound.astream(messages, config=config):
                 if isinstance(chunk, AIMessageChunk):
                     if chunk.tool_call_chunks:
@@ -77,7 +77,7 @@ async def stream_llm(
                                 model=model,
                             )
                     yield chunk, model
-            structured_log("llm_stream_end", model=model)
+            structured_log("llm_stream_end", model=model, attempt=attempt)
             return
         except RateLimitError as e:
             log.warning("Model %s quota exceeded, trying next model", model)
