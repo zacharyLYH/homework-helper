@@ -62,12 +62,16 @@ def _build_lc_messages(req: ChatRequest) -> list:
 
 
 def _save_user_message(req: ChatRequest) -> None:
+    metadata = None
+    if req.is_diagram:
+        metadata = json.dumps({"is_diagram": True})
     save_message(
         chat_id=req.chat_id or 0,
         role="user",
         content=req.message,
         image_base64=req.image,
         image_media_type=req.image_media_type,
+        metadata_json=metadata,
         quote=req.quote,
     )
 
@@ -143,7 +147,7 @@ def _rejection_reply(reason: str) -> str:
 async def chat_stream(req: ChatRequest, request: Request, user: User = Depends(get_current_user)):
     thread_id = str(uuid.uuid4())
 
-    structured_log("chat_request", message=req.message, message_length=len(req.message), chat_id=req.chat_id, thread_id=thread_id, has_image=bool(req.image))
+    structured_log("chat_request", message=req.message, message_length=len(req.message), chat_id=req.chat_id, thread_id=thread_id, has_image=bool(req.image), is_diagram=bool(req.is_diagram))
     log.info("Chat stream request: thread_id=%s, chat_id=%s, message_length=%d", thread_id, req.chat_id, len(req.message))
 
     lc_messages = _build_lc_messages(req)
@@ -299,6 +303,7 @@ async def chat_stream(req: ChatRequest, request: Request, user: User = Depends(g
                 chat_id=req.chat_id,
                 thread_id=thread_id,
                 has_image=bool(req.image),
+                is_diagram=bool(req.is_diagram),
             )
             log.info("Chat request rejected: thread_id=%s reason=%s score=%.3f", thread_id, rejection_reason, rejection_score)
             await graph_task

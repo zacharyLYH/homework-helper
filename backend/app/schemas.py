@@ -90,6 +90,7 @@ class ChatRequest(BaseModel):
     image_media_type: Optional[str] = None
     messages: Optional[list[dict[str, Any]]] = None
     quote: Optional[str] = None
+    is_diagram: Optional[bool] = None
 
 
 class ToolInfo(BaseModel):

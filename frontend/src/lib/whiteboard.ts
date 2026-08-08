@@ -50,18 +50,20 @@ const PENDING_KEY = "homework-helper:pending-whiteboard";
 
 export function savePendingDrawing(chatId: number, data: string, mediaType: string): void {
   try {
-    sessionStorage.setItem(PENDING_KEY, JSON.stringify({ chatId, data, mediaType }));
+    sessionStorage.setItem(PENDING_KEY, JSON.stringify({ chatId, data, mediaType, isDiagram: true }));
   } catch {
     /* storage full/unavailable — draft is best-effort */
   }
 }
 
-export function getPendingDrawing(): { chatId: number; data: string; mediaType: string } | null {
+export function getPendingDrawing(): { chatId: number; data: string; mediaType: string; isDiagram: boolean } | null {
   try {
     const raw = sessionStorage.getItem(PENDING_KEY);
     if (!raw) return null;
     const p = JSON.parse(raw);
-    return p && typeof p.chatId === "number" && typeof p.data === "string" ? p : null;
+    return p && typeof p.chatId === "number" && typeof p.data === "string"
+      ? { ...p, isDiagram: Boolean(p.isDiagram) }
+      : null;
   } catch {
     return null;
   }

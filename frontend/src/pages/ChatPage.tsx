@@ -26,7 +26,7 @@ export default function ChatPage() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [attachedImage, setAttachedImage] = useState<{ data: string; mediaType: string } | null>(null);
+  const [attachedImage, setAttachedImage] = useState<{ data: string; mediaType: string; isDiagram: boolean } | null>(null);
   const prevChatRef = useRef<number | null>(null);
 
   const loadSubjects = useCallback(async () => {
@@ -91,7 +91,7 @@ export default function ChatPage() {
   useEffect(() => {
     const pending = getPendingDrawing();
     if (selectedChatId != null && pending && pending.chatId === selectedChatId) {
-      setAttachedImage({ data: pending.data, mediaType: pending.mediaType });
+      setAttachedImage({ data: pending.data, mediaType: pending.mediaType, isDiagram: pending.isDiagram });
     } else if (pending && prevChatRef.current != null && pending.chatId !== selectedChatId) {
       clearPendingDrawing();
       setAttachedImage(null);
@@ -224,6 +224,7 @@ export default function ChatPage() {
       chatId: selectedChatId,
       image: userMessage.image,
       imageMediaType: userMessage.imageMediaType,
+      isDiagram: userMessage.isDiagram,
       quote: userQuote,
       messages: contextMessages,
       onToken,
@@ -236,7 +237,7 @@ export default function ChatPage() {
     setQuote(null);
   }, [streaming, selectedChatId, onToken, onDone, onError, onTitle, onToolCall, onDrawing]);
 
-  const handleSubmitMessage = useCallback(async (text: string, image?: { data: string; mediaType: string; name: string }) => {
+  const handleSubmitMessage = useCallback(async (text: string, image?: { data: string; mediaType: string; name: string; isDiagram?: boolean }) => {
     if (!text || streaming || !selectedChatId) return;
 
     const userMessage: ChatMessage = {
@@ -245,6 +246,7 @@ export default function ChatPage() {
       image: image?.data,
       imageMediaType: image?.mediaType,
       imageName: image?.name,
+      isDiagram: image?.isDiagram,
       quote: quote ?? undefined,
     };
     sendMessage(userMessage, [...messages, userMessage], quote ?? undefined);

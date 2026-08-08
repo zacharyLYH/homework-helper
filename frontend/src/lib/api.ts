@@ -61,6 +61,7 @@ export interface ChatMessage {
   image?: string;
   imageMediaType?: string;
   imageName?: string;
+  isDiagram?: boolean;
   quote?: string;
   usage?: TokenUsage;
   tokenCount?: number;
@@ -78,6 +79,7 @@ export interface ChatStreamOptions {
   chatId?: number;
   image?: string;
   imageMediaType?: string;
+  isDiagram?: boolean;
   messages?: ChatMessage[];
   quote?: string;
   onToken: (content: string) => void;
@@ -89,13 +91,13 @@ export interface ChatStreamOptions {
 }
 
 export function sendChatStream(options: ChatStreamOptions): AbortController {
-  const { message, chatId, image, imageMediaType, messages, quote, onToken, onDone, onError, onTitle, onToolCall, onDrawing } = options;
+  const { message, chatId, image, imageMediaType, isDiagram, messages, quote, onToken, onDone, onError, onTitle, onToolCall, onDrawing } = options;
   const controller = new AbortController();
 
   fetch(`${API_BASE}/chat/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, chat_id: chatId, image, image_media_type: imageMediaType, quote, messages: messages?.map(m => ({ role: m.role, content: m.content })) }),
+    body: JSON.stringify({ message, chat_id: chatId, image, image_media_type: imageMediaType, is_diagram: isDiagram, quote, messages: messages?.map(m => ({ role: m.role, content: m.content })) }),
     credentials: "include",
     signal: controller.signal,
   })

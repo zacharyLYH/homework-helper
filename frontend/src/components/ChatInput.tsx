@@ -37,7 +37,7 @@ import { clearPendingDrawing } from "@/lib/whiteboard";
 interface ChatInputProps {
     onSubmit: (
         text: string,
-        image?: { data: string; mediaType: string; name: string },
+        image?: { data: string; mediaType: string; name: string; isDiagram?: boolean },
     ) => void;
     streaming: boolean;
     selectedChatId: number | null;
@@ -47,7 +47,7 @@ interface ChatInputProps {
     quote?: string;
     onClearQuote?: () => void;
     onQuote?: (text: string) => void;
-    attachedImage?: { data: string; mediaType: string } | null;
+    attachedImage?: { data: string; mediaType: string; isDiagram?: boolean } | null;
     onAttachedImageConsumed?: () => void;
 }
 
@@ -68,6 +68,7 @@ export default function ChatInput({
     const [imageData, setImageData] = useState<string | null>(null);
     const [imageMediaType, setImageMediaType] = useState<string | null>(null);
     const [imageName, setImageName] = useState("");
+    const [imageIsDiagram, setImageIsDiagram] = useState(false);
     const [selPos, setSelPos] = useState<{ top: number; left: number } | null>(null);
     const [mathDialogOpen, setMathDialogOpen] = useState(false);
     const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -80,6 +81,7 @@ export default function ChatInput({
             setImageData(attachedImage.data);
             setImageMediaType(attachedImage.mediaType);
             setImageName("Whiteboard drawing.png");
+            setImageIsDiagram(attachedImage.isDiagram ?? false);
             onAttachedImageConsumed?.();
             textInputRef.current?.focus();
         }
@@ -123,6 +125,7 @@ export default function ChatInput({
             setImageData(base64);
             setImageMediaType(file.type);
             setImageName(file.name);
+            setImageIsDiagram(false);
             fileInputRef.current?.blur();
             textInputRef.current?.focus();
         };
@@ -134,6 +137,7 @@ export default function ChatInput({
         setImageData(null);
         setImageMediaType(null);
         setImageName("");
+        setImageIsDiagram(false);
     };
 
     const handleSubmit = (e: { preventDefault: () => void }) => {
@@ -146,6 +150,7 @@ export default function ChatInput({
                   data: imageData,
                   mediaType: imageMediaType || "",
                   name: imageName,
+                  isDiagram: imageIsDiagram,
               }
             : undefined;
         setInput("");
