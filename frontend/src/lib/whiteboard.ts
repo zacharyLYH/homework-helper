@@ -116,8 +116,9 @@ export function renderElementsToDataURL(elements: WhiteboardElement[]): string |
           break;
         }
         case "arrow": {
-          const [fx, fy] = el.from_pos ?? [0, 0];
-          const [tx, ty] = el.to_pos ?? [0, 0];
+          const adjusted = adjustArrowPoints(el, elements);
+          const [fx, fy] = adjusted.from_pos;
+          const [tx, ty] = adjusted.to_pos;
           group.add(
             new Konva.Arrow({
               points: [fx, fy, tx, ty],
@@ -242,6 +243,85 @@ export function themeColor(variableName: string): string {
     .trim();
   if (!value) return "#000000";
   return oklchToHex(value) ?? value;
+}
+
+function intersectSegmentRect(
+  x1: number, y1: number, x2: number, y2: number,
+  rx: number, ry: number, rw: number, rh: number
+): [number, number] | null {
+  const edges = [
+    [[rx, ry], [rx + rw, ry]],
+    [[rx + rw, ry], [rx + rw, ry + rh]],
+    [[rx + rw, ry + rh], [rx, ry + rh]],
+    [[rx, ry + rh], [rx, ry]]
+  ];
+  for (const [[x3, y3], [x4, y4]] of edges) {
+    const denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
+    if (denom !== 0) {
+      const ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom;
+      const ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denom;
+      if (ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1) {
+        return [x1 + ua * (x2 - x1), y1 + ua * (y2 - y1)];
+      }
+    }
+  }
+  return null;
+}
+
+export function adjustArrowPoints(
+  el: WhiteboardElement,
+  elements: WhiteboardElement[]
+): { from_pos: [number, number]; to_pos: [number, number] } {
+  const from = el.from_pos ?? [0, 0];
+  const to = el.to_pos ?? [0, 0];
+  let fx = from[0];
+  let fy = from[1];
+  let tx = to[0];
+  let ty = to[1];
+
+  const inRect = (x: number, y: number, rx: number, ry: number, rw: number, rh: number) =>
+    x >= rx && x <= rx + rw && y >= ry && y <= ry + rh;
+
+  const inEllipse = (x: number, y: number, cx: number, cy: number, rx: number, ry: number) =>
+    rx > 0 && ry > 0 && ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1.01;
+
+  for (const shape of elements) {
+    if (shape.id === el.id) continue;
+
+    if (shape.type === "rect") {
+      const rx = shape.x ?? 0;
+      const ry = shape.y ?? 0;
+      const rw = shape.w ?? 0;
+      const rh = shape.h ?? 0;
+
+      if (inRect(fx, fy, rx, ry, rw, rh)) {
+        const pt = intersectSegmentRect(fx, fy, tx, ty, rx, ry, rw, rh);
+        if (pt) { fx = pt[0]; fy = pt[1]; }
+      }
+      if (inRect(tx, ty, rx, ry, rw, rh)) {
+        const pt = intersectSegmentRect(tx, ty, fx, fy, rx, ry, rw, rh);
+        if (pt) { tx = pt[0]; ty = pt[1]; }
+      }
+    } else if (shape.type === "ellipse") {
+      const cx = shape.cx ?? 0;
+      const cy = shape.cy ?? 0;
+      const rx = shape.rx ?? 0;
+      const ry = shape.ry ?? 0;
+
+      if (inEllipse(fx, fy, cx, cy, rx, ry)) {
+        const theta = Math.atan2(ty - fy, tx - fx);
+        fx = cx + rx * Math.cos(theta);
+        fy = cy + ry * Math.sin(theta);
+      }
+      if (inEllipse(tx, ty, cx, cy, rx, ry)) {
+        const theta = Math.atan2(fy - ty, fx - tx);
+        tx = cx + rx * Math.cos(theta);
+        ty = cy + ry * Math.sin(theta);
+      }
+    }
+  }
+
+  return { from_pos: [fx, fy], to_pos: [tx, ty] };
 }
 
 export const TOOL_LABELS: Record<WhiteboardTool, string> = {

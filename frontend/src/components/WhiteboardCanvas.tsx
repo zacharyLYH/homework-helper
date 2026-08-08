@@ -11,6 +11,7 @@ import {
   translateElement,
   uid,
   unionBounds,
+  adjustArrowPoints,
   type Bounds,
   type WhiteboardElement,
   type WhiteboardTool,
@@ -34,7 +35,7 @@ interface ResizeState {
   prev: WhiteboardElement[];
 }
 
-export function renderElement(el: WhiteboardElement, fg: string): ReactNode {
+export function renderElement(el: WhiteboardElement, fg: string, allElements: WhiteboardElement[] = []): ReactNode {
   const stroke = el.stroke ?? fg;
   const sw = el.strokeWidth ?? DEFAULT_STROKE_WIDTH;
   const fill = el.fill ?? "#00000000";
@@ -57,8 +58,9 @@ export function renderElement(el: WhiteboardElement, fg: string): ReactNode {
       );
     }
     case "arrow": {
-      const [fx, fy] = el.from_pos ?? [0, 0];
-      const [tx, ty] = el.to_pos ?? [0, 0];
+      const adjusted = adjustArrowPoints(el, allElements);
+      const [fx, fy] = adjusted.from_pos;
+      const [tx, ty] = adjusted.to_pos;
       return (
         <Arrow
           key={el.id}
@@ -583,8 +585,8 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, WhiteboardCanvasProp
       >
         <Layer>
           <Rect x={0} y={0} width={stageSize.w} height={stageSize.h} fill={bgColor} />
-          {userElements.map((el) => renderElement(el, fgColor))}
-          {draft && renderElement(draft, fgColor)}
+          {userElements.map((el) => renderElement(el, fgColor, userElements))}
+          {draft && renderElement(draft, fgColor, userElements)}
         </Layer>
         {selBounds && tool === "select" && (
           <Layer listening={false}>
