@@ -81,7 +81,7 @@ export default function MessageBubble({
 }) {
   const isUser = msg.role === "user";
 
-  if (!isUser && !msg.content && isStreaming && isLast) {
+  if (!isUser && !msg.content && !msg.image && isStreaming && isLast) {
     return (
       <Message align="start">
         <MessageContent>
@@ -156,6 +156,13 @@ export default function MessageBubble({
                   } as React.CSSProperties
                 }
               >
+                {msg.image && (
+                  <img
+                    src={`data:${msg.imageMediaType};base64,${msg.image}`}
+                    alt="AI diagram"
+                    className="max-w-full max-h-48 rounded-lg mb-2"
+                  />
+                )}
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm, remarkMath]}
                   rehypePlugins={[rehypeRaw, rehypeKatex]}

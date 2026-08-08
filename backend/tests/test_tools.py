@@ -191,6 +191,58 @@ async def test_tool_call_no_tool_needed(client, chat):
     assert msgs[1]["content"] == "Hello world!"
 
 
+async def test_whiteboard_create_diagram_emits_drawing_event(client, chat):
+    """UAT: create_diagram tool → drawing SSE event emitted, no JSON in reply text.
+
+    Verifies the whiteboard interception: the tool's element payload is
+    streamed as a `drawing` event (for the canvas) and is NOT included in
+    the assistant's text reply (no illegible JSON on the FE).
+    """
+    chat_id = await chat()
+    token = _make_token()
+    tool_args = json.dumps({
+        "nodes": [
+            {"id": "a", "label": "Start", "kind": "box"},
+            {"id": "b", "label": "End", "kind": "box"},
+        ],
+        "edges": [{"from_id": "a", "to_id": "b", "label": "next", "directed": True}],
+    })
+
+    with mock_tool_llm("create_diagram", tool_args, "Here is the flow diagram."), mock_title_llm("Test"):
+        resp = await client.post(
+            "/api/chat/stream",
+            json={"message": "help me draw a diagram for my homework", "chat_id": chat_id},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert resp.status_code == 200
+    events = _extract_sse(resp.text)
+
+    # --- 1. drawing SSE event emitted with elements ---
+    drawing_events = [e for e in events if e["type"] == "drawing"]
+    assert len(drawing_events) == 1, f"Expected 1 drawing event, got {len(drawing_events)}"
+    elements = drawing_events[0]["elements"]
+    assert isinstance(elements, list) and len(elements) >= 2, f"Expected >=2 elements, got {len(elements)}"
+    # 2 rect nodes + 1 arrow edge
+    assert sum(1 for e in elements if e["type"] == "rect") == 2
+    assert sum(1 for e in elements if e["type"] == "arrow") == 1
+
+    # --- 2. tool_call event present ---
+    tool_call_events = [e for e in events if e["type"] == "tool_call"]
+    assert len(tool_call_events) == 1
+    assert tool_call_events[0]["name"] == "create_diagram"
+
+    # --- 3. reply text is clean prose — no JSON leaked ---
+    token_events = [e for e in events if e["type"] == "token"]
+    full = "".join(e["content"] for e in token_events)
+    assert full == "Here is the flow diagram.", f"Expected clean prose, got {full!r}"
+    assert '"type"' not in full, "JSON element payload leaked into reply text"
+
+    # --- 4. done event present ---
+    done_events = [e for e in events if e["type"] == "done"]
+    assert len(done_events) == 1
+
+
 async def test_duplicate_tool_call_prevention(client, chat):
     """UAT: LLM keeps calling the same tool+args → dedup prevents infinite loop.
 

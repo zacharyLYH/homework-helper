@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { sendChatStream, getSubjects, getChats, getMessages, type ChatMessage, type TokenUsage, getUsageFromMetadata, getToolCallsFromMetadata, type ChatSummary, type ToolCallInfo } from "@/lib/api";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
@@ -8,6 +8,7 @@ import ChatHeader from "@/components/ChatHeader";
 import ChatMessages from "@/components/ChatMessages";
 import ChatInput from "@/components/ChatInput";
 import type { Subject } from "@/lib/api";
+import { clearPendingDrawing, getPendingDrawing, renderElementsToDataURL, type WhiteboardElement } from "@/lib/whiteboard";
 
 export default function ChatPage() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -20,9 +21,13 @@ export default function ChatPage() {
   const [quote, setQuote] = useState<string | null>(null);
   const [toolCalls, setToolCalls] = useState<ToolCallInfo[]>([]);
   const toolCallsRef = useRef<ToolCallInfo[]>([]);
+  const drawingRef = useRef<WhiteboardElement[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [attachedImage, setAttachedImage] = useState<{ data: string; mediaType: string } | null>(null);
+  const prevChatRef = useRef<number | null>(null);
 
   const loadSubjects = useCallback(async () => {
     try {
@@ -65,6 +70,31 @@ export default function ChatPage() {
       setMessages([]);
     }
   };
+
+  // Auto-select a chat when arriving via /chat?chatId=N (e.g. from the whiteboard).
+  useEffect(() => {
+    const param = searchParams.get("chatId");
+    if (param && /^\d+$/.test(param) && !selectedChatId) {
+      handleSelectChat(Number(param));
+    }
+    // Run once on mount; selectedChatId starts null.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  // Adopt the pending whiteboard drawing for the active chat. Preserved across
+  // refresh (sessionStorage); discarded when the user switches to a different chat.
+  useEffect(() => {
+    const pending = getPendingDrawing();
+    if (selectedChatId != null && pending && pending.chatId === selectedChatId) {
+      setAttachedImage({ data: pending.data, mediaType: pending.mediaType });
+    } else if (pending && prevChatRef.current != null && pending.chatId !== selectedChatId) {
+      clearPendingDrawing();
+      setAttachedImage(null);
+    } else {
+      setAttachedImage(null);
+    }
+    prevChatRef.current = selectedChatId;
+  }, [selectedChatId]);
 
   const handleChatCreated = async (chatId: number, subjectId: number) => {
     try {
@@ -155,11 +185,31 @@ export default function ChatPage() {
     setToolCalls((prev) => [...prev, toolCall]);
   }, []);
 
+  // Accumulate AI `drawing` events and render the diagram as an image on the
+  // last assistant message, mirroring how a user image attachment is shown.
+  const onDrawing = useCallback((elements: WhiteboardElement[]) => {
+    const byId = new Map<string, WhiteboardElement>(drawingRef.current.map((e) => [e.id, e]));
+    elements.forEach((el) => byId.set(el.id, el));
+    const merged = Array.from(byId.values());
+    drawingRef.current = merged;
+    const uri = renderElementsToDataURL(merged);
+    if (!uri) return;
+    const base64 = uri.split(",")[1];
+    setMessages((prev) =>
+      prev.map((msg, i) =>
+        i === prev.length - 1 && msg.role === "assistant"
+          ? { ...msg, image: base64, imageMediaType: "image/png" }
+          : msg,
+      ),
+    );
+  }, []);
+
   const sendMessage = useCallback((userMessage: ChatMessage, contextMessages: ChatMessage[], userQuote?: string) => {
     if (streaming || !selectedChatId) return;
 
     setCurrentMessageUsage(null);
     toolCallsRef.current = [];
+    drawingRef.current = [];
     setToolCalls([]);
     setMessages([...contextMessages, { role: "assistant", content: "" } as ChatMessage]);
     setStreaming(true);
@@ -176,9 +226,10 @@ export default function ChatPage() {
       onError,
       onTitle,
       onToolCall,
+      onDrawing,
     });
     setQuote(null);
-  }, [streaming, selectedChatId, onToken, onDone, onError, onTitle, onToolCall]);
+  }, [streaming, selectedChatId, onToken, onDone, onError, onTitle, onToolCall, onDrawing]);
 
   const handleSubmitMessage = useCallback(async (text: string, image?: { data: string; mediaType: string; name: string }) => {
     if (!text || streaming || !selectedChatId) return;
@@ -208,6 +259,8 @@ export default function ChatPage() {
   }, [streaming, selectedChatId, messages, sendMessage]);
 
   const handleClearChat = useCallback(() => {
+    clearPendingDrawing();
+    setAttachedImage(null);
     setSelectedChatId(null);
     setMessages([]);
   }, []);
@@ -255,6 +308,8 @@ export default function ChatPage() {
           quote={quote ?? undefined}
           onClearQuote={() => setQuote(null)}
           onQuote={(text) => setQuote(text)}
+          attachedImage={attachedImage}
+          onAttachedImageConsumed={() => setAttachedImage(null)}
         />
       </SidebarInset>
     </SidebarProvider>

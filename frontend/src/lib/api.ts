@@ -1,5 +1,7 @@
 const API_BASE = "/api";
 
+import type { WhiteboardElement } from "./whiteboard";
+
 export async function requestCode(email: string): Promise<{ message: string }> {
   const res = await fetch(`${API_BASE}/auth/request-code`, {
     method: "POST",
@@ -83,10 +85,11 @@ export interface ChatStreamOptions {
   onError: (error: string) => void;
   onTitle?: (title: string) => void;
   onToolCall?: (toolCall: ToolCallInfo) => void;
+  onDrawing?: (elements: WhiteboardElement[]) => void;
 }
 
 export function sendChatStream(options: ChatStreamOptions): AbortController {
-  const { message, chatId, image, imageMediaType, messages, quote, onToken, onDone, onError, onTitle, onToolCall } = options;
+  const { message, chatId, image, imageMediaType, messages, quote, onToken, onDone, onError, onTitle, onToolCall, onDrawing } = options;
   const controller = new AbortController();
 
   fetch(`${API_BASE}/chat/stream`, {
@@ -130,6 +133,7 @@ export function sendChatStream(options: ChatStreamOptions): AbortController {
                 onDone(data.usage);
               }
               else if (data.type === "tool_call" && onToolCall) onToolCall({ name: data.name, args: data.args, id: data.id });
+              else if (data.type === "drawing" && onDrawing) onDrawing(data.elements);
               else if (data.type === "error") onError(data.content);
             } catch {}
           }

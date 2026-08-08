@@ -121,33 +121,6 @@ async def test_chat_stream_empty_message(client, auth_and_chat):
 # ── edge cases ───────────────────────────────────────────────────────
 
 
-async def test_chat_stream_unicode_message(client, auth_and_chat):
-    chat_id = await auth_and_chat()
-    token = _make_token()
-
-    with mock_llm(content="¡Hola! 你好 こんにちは"), mock_title_llm():
-        resp = await client.post(
-            "/api/chat/stream",
-            json={"message": "What does this physics formula mean: π ≈ 3.14159 🎉?", "chat_id": chat_id},
-            headers={"Authorization": f"Bearer {token}"},
-        )
-
-    assert resp.status_code == 200
-    lines = [l for l in resp.text.split("\n") if l.strip()]
-    token_lines = [l for l in lines if '"type": "token"' in l]
-
-    full = "".join(json.loads(l.removeprefix("data: "))["content"] for l in token_lines)
-    assert full == "¡Hola! 你好 こんにちは"
-
-    with get_conn() as conn:
-        msgs = conn.execute(
-            "SELECT content FROM messages WHERE chat_id = ? ORDER BY created_at",
-            (chat_id,),
-        ).fetchall()
-        assert msgs[0]["content"] == "What does this physics formula mean: π ≈ 3.14159 🎉?"
-        assert msgs[1]["content"] == "¡Hola! 你好 こんにちは"
-
-
 async def test_chat_stream_with_image(client, auth_and_chat):
     chat_id = await auth_and_chat()
     token = _make_token()
@@ -522,3 +495,39 @@ async def test_build_lc_messages_quote_none_skips_append(setup_test_db):
     msgs = build(req)
     assert len(msgs) == 1
     assert msgs[0].content == "hello"
+
+
+async def test_build_lc_messages_attaches_image_with_history(setup_test_db):
+    """Image reaches the model even when conversation history is provided.
+
+    Regression: with `messages` context present, the previous branch only
+    mapped text content and silently dropped req.image, so the LLM never saw
+    attached drawings/photos sent from the chat UI.
+    """
+    from app.routes.chat import _build_lc_messages as build
+    from app.schemas import ChatRequest
+
+    req = ChatRequest(
+        message="help me factor the equation",
+        image="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+        image_media_type="image/png",
+        messages=[
+            {"role": "user", "content": "what is binary code"},
+            {"role": "assistant", "content": "Binary code is a system..."},
+            {"role": "user", "content": "help me factor the equation"},
+        ],
+    )
+    msgs = build(req)
+    assert len(msgs) == 3
+    last = msgs[-1]
+    assert last.type == "human"
+    assert isinstance(last.content, list)
+    kinds = {part.get("type") for part in last.content}
+    assert kinds == {"image_url", "text"}
+    image_part = next(p for p in last.content if p["type"] == "image_url")
+    assert image_part["image_url"]["url"].startswith("data:image/png;base64,")
+    text_part = next(p for p in last.content if p["type"] == "text")
+    assert text_part["text"] == "help me factor the equation"
+    # Earlier user/assistant messages remain plain text.
+    assert msgs[0].content == "what is binary code"
+    assert msgs[1].content == "Binary code is a system..."

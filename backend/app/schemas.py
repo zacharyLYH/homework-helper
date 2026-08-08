@@ -12,7 +12,7 @@ from typing_extensions import Annotated, TypedDict
 # --- LangGraph State ---
 
 
-class GraphState(TypedDict):
+class  GraphState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
     model: str
     pending_tool_calls: int
@@ -34,6 +34,49 @@ class RouteCategory(str, enum.Enum):
     MATH = "math"
     CODE = "code"
     GENERAL = "general"
+
+
+# --- Whiteboard models ---
+
+
+class NodeSpec(BaseModel):
+    id: str
+    label: str
+    kind: str = "box"  # box | ellipse | diamond
+
+
+class EdgeSpec(BaseModel):
+    from_id: str
+    to_id: str
+    label: Optional[str] = None
+    directed: bool = True
+
+
+class ElementSpec(BaseModel):
+    type: str  # line | arrow | rect | ellipse | path | text
+    id: str
+    points: Optional[list[list[float]]] = None
+    from_pos: Optional[list[float]] = None
+    to_pos: Optional[list[float]] = None
+    x: Optional[float] = None
+    y: Optional[float] = None
+    w: Optional[float] = None
+    h: Optional[float] = None
+    cx: Optional[float] = None
+    cy: Optional[float] = None
+    rx: Optional[float] = None
+    ry: Optional[float] = None
+    d: Optional[str] = None
+    text: Optional[str] = None
+    label: Optional[str] = None
+    fontSize: Optional[float] = None
+    stroke: Optional[str] = None
+    strokeWidth: Optional[float] = None
+    fill: Optional[str] = None
+    kind: Optional[str] = None
+    from_id: Optional[str] = None
+    to_id: Optional[str] = None
+    directed: Optional[bool] = None
 
 
 # --- API Models ---

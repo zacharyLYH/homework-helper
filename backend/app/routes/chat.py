@@ -27,6 +27,7 @@ from app.llm import title_llm
 from app.logging import get_logger, structured_log
 from app.schemas import ChatRequest, User
 from app.structured_log import force_structured_logger, get_structured_logger
+from app.tools import WHITEBOARD_TOOL_NAMES
 
 log = get_logger(__name__)
 router = APIRouter()
@@ -36,29 +37,28 @@ router = APIRouter()
 
 
 def _build_lc_messages(req: ChatRequest) -> list:
-    if req.messages:
-        msgs: list = [
-            HumanMessage(content=m["content"]) if m["role"] == "user"
-            else AIMessage(content=m["content"])
-            for m in req.messages
-        ]
-        if req.quote:
-            for i in range(len(req.messages) - 1, -1, -1):
-                if req.messages[i]["role"] == "user":
-                    original = msgs[i].content
-                    msgs[i] = HumanMessage(content=f'{original}\n\n[quoting: "{req.quote}"]')
-                    break
-        return msgs
+    raw = req.messages or [{"role": "user", "content": req.message}]
+    msgs: list = [
+        HumanMessage(content=m["content"]) if m["role"] == "user"
+        else AIMessage(content=m["content"])
+        for m in raw
+    ]
 
-    if req.image and req.image_media_type:
-        return [HumanMessage(content=[
-            {"type": "image_url", "image_url": {"url": f"data:{req.image_media_type};base64,{req.image}"}},
-            {"type": "text", "text": req.message},
-        ])]
-    content = req.message
+    # The current message is always the last one, so quote/image belong on it.
+    current = msgs[-1]
+    content = current.content if isinstance(current.content, str) else req.message
     if req.quote:
         content = f'{content}\n\n[quoting: "{req.quote}"]'
-    return [HumanMessage(content=content)]
+
+    if req.image and req.image_media_type:
+        msgs[-1] = HumanMessage(content=[
+            {"type": "image_url", "image_url": {"url": f"data:{req.image_media_type};base64,{req.image}"}},
+            {"type": "text", "text": content},
+        ])
+    elif req.quote:
+        msgs[-1] = HumanMessage(content=content)
+
+    return msgs
 
 
 def _save_user_message(req: ChatRequest) -> None:
@@ -227,6 +227,15 @@ async def chat_stream(req: ChatRequest, request: Request, user: User = Depends(g
                     if pending_tool_calls > 0:
                         if node_name == NODE_TOOL_EXECUTOR and event["event"] == "on_chain_end":
                             pending_tool_calls = 0
+                            output = event["data"].get("output") or {}
+                            whiteboard_ids = {tm["id"] for tm in tool_calls_meta if tm["name"] in WHITEBOARD_TOOL_NAMES}
+                            for tm in output.get("messages", []):
+                                if getattr(tm, "tool_call_id", None) in whiteboard_ids:
+                                    try:
+                                        elements = json.loads(tm.content)
+                                        await queue.put(f"data: {json.dumps({'type': 'drawing', 'elements': elements})}\n\n")
+                                    except (json.JSONDecodeError, TypeError):
+                                        pass
                         continue
 
                     if node_name == NODE_TOOL_EXECUTOR:

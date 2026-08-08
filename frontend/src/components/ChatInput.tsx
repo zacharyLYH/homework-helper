@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Paperclip, X, Quote, Sigma } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Send, X, Quote, Sigma, MoreHorizontal, Paperclip, PencilRuler } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -10,6 +11,12 @@ import {
     AttachmentActions,
     AttachmentAction,
 } from "@/components/ui/attachment";
+import {
+    DropdownMenu,
+    DropdownMenuTrigger,
+    DropdownMenuContent,
+    DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import {
     Tooltip,
     TooltipContent,
@@ -24,6 +31,8 @@ import {
 } from "@/components/ui/context-menu";
 import QuoteBlock from "./QuoteBlock";
 import MathEquationDialog from "./MathEquationDialog";
+import { cn } from "@/lib/utils";
+import { clearPendingDrawing } from "@/lib/whiteboard";
 
 interface ChatInputProps {
     onSubmit: (
@@ -38,6 +47,8 @@ interface ChatInputProps {
     quote?: string;
     onClearQuote?: () => void;
     onQuote?: (text: string) => void;
+    attachedImage?: { data: string; mediaType: string } | null;
+    onAttachedImageConsumed?: () => void;
 }
 
 export default function ChatInput({
@@ -50,6 +61,8 @@ export default function ChatInput({
     quote,
     onClearQuote,
     onQuote,
+    attachedImage,
+    onAttachedImageConsumed,
 }: ChatInputProps) {
     const [input, setInput] = useState("");
     const [imageData, setImageData] = useState<string | null>(null);
@@ -60,6 +73,17 @@ export default function ChatInput({
     const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const textInputRef = useRef<HTMLTextAreaElement>(null);
+    const navigate = useNavigate();
+
+    useEffect(() => {
+        if (attachedImage) {
+            setImageData(attachedImage.data);
+            setImageMediaType(attachedImage.mediaType);
+            setImageName("Whiteboard drawing.png");
+            onAttachedImageConsumed?.();
+            textInputRef.current?.focus();
+        }
+    }, [attachedImage, onAttachedImageConsumed]);
 
     useEffect(() => {
         const update = () => {
@@ -126,6 +150,7 @@ export default function ChatInput({
             : undefined;
         setInput("");
         clearImage();
+        clearPendingDrawing();
         onSubmit(msg, image);
     };
 
@@ -156,7 +181,7 @@ export default function ChatInput({
             <ContextMenuTrigger asChild>
                 <form
                     onSubmit={handleSubmit}
-                    className="border-t border-border bg-background"
+                    className={cn("border-t border-border bg-background", !selectedChatId && "cursor-not-allowed")}
                 >
                     <div className="max-w-3xl mx-auto p-4">
                         <div className="rounded-3xl border border-border bg-muted/30 shadow-xs transition-shadow focus-within:shadow-sm focus-within:border-ring/50">
@@ -172,7 +197,7 @@ export default function ChatInput({
                                             <img
                                                 src={`data:${imageMediaType};base64,${imageData}`}
                                                 alt={imageName}
-                                                className="h-full w-full object-cover"
+                                                className={cn("h-full w-full", imageName === "Whiteboard drawing.png" ? "object-contain" : "object-cover")}
                                             />
                                         </AttachmentMedia>
                                         <AttachmentContent>
@@ -200,38 +225,41 @@ export default function ChatInput({
                                     className="hidden"
                                     onChange={handleFileSelect}
                                 />
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
                                         <Button
                                             type="button"
                                             variant="ghost"
                                             size="icon"
-                                            onClick={() =>
-                                                fileInputRef.current?.click()
-                                            }
                                             disabled={streaming || !selectedChatId}
                                             className="cursor-pointer shrink-0 text-muted-foreground hover:text-foreground"
                                         >
-                                            <Paperclip className="h-4 w-4" />
+                                            <MoreHorizontal className="h-4 w-4" />
                                         </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Attach image</TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="icon"
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="start">
+                                        <DropdownMenuItem
+                                            onClick={() => fileInputRef.current?.click()}
+                                            disabled={!!imageData}
+                                            className="cursor-pointer"
+                                        >
+                                            <Paperclip className="h-4 w-4" /> Attach image
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
                                             onClick={() => setMathDialogOpen(true)}
-                                            disabled={streaming || !selectedChatId}
-                                            className="cursor-pointer shrink-0 text-muted-foreground hover:text-foreground"
+                                            className="cursor-pointer"
                                         >
-                                            <Sigma className="h-4 w-4" />
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Insert math equation</TooltipContent>
-                                </Tooltip>
+                                            <Sigma className="h-4 w-4" /> Insert math equation
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                            onClick={() => selectedChatId && navigate(`/whiteboard?chatId=${selectedChatId}`)}
+                                            disabled={!!imageData}
+                                            className="cursor-pointer"
+                                        >
+                                            <PencilRuler className="h-4 w-4" /> Whiteboard
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
                                 <Textarea
                                     ref={textInputRef}
                                     rows={1}
@@ -243,11 +271,7 @@ export default function ChatInput({
                                             handleSubmit(e);
                                         }
                                     }}
-                                    placeholder={
-                                        imageData
-                                            ? "Add a message (optional)..."
-                                            : "Type your message..."
-                                    }
+                                    placeholder="Type your message..."
                                     disabled={streaming || !selectedChatId}
                                     className="min-h-0 max-h-40 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 py-1.5"
                                 />
