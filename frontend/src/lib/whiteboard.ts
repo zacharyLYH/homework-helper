@@ -43,38 +43,28 @@ export function uid(): string {
 }
 
 // --- Pending whiteboard drawing (composer draft, tied to a chat) ---
-// Persisted in sessionStorage so an accidental refresh keeps the drawing, but
-// cleared as soon as the message is submitted or the chat is switched.
+// Kept in memory only, so an accidental refresh drops the drawing. Cleared as
+// soon as the message is submitted or a different chat is selected.
 
-const PENDING_KEY = "homework-helper:pending-whiteboard";
-
-export function savePendingDrawing(chatId: number, data: string, mediaType: string): void {
-  try {
-    sessionStorage.setItem(PENDING_KEY, JSON.stringify({ chatId, data, mediaType, isDiagram: true }));
-  } catch {
-    /* storage full/unavailable — draft is best-effort */
-  }
+interface PendingDrawing {
+  chatId: number;
+  data: string;
+  mediaType: string;
+  isDiagram: boolean;
 }
 
-export function getPendingDrawing(): { chatId: number; data: string; mediaType: string; isDiagram: boolean } | null {
-  try {
-    const raw = sessionStorage.getItem(PENDING_KEY);
-    if (!raw) return null;
-    const p = JSON.parse(raw);
-    return p && typeof p.chatId === "number" && typeof p.data === "string"
-      ? { ...p, isDiagram: Boolean(p.isDiagram) }
-      : null;
-  } catch {
-    return null;
-  }
+let pending: PendingDrawing | null = null;
+
+export function savePendingDrawing(chatId: number, data: string, mediaType: string): void {
+  pending = { chatId, data, mediaType, isDiagram: true };
+}
+
+export function getPendingDrawing(): PendingDrawing | null {
+  return pending;
 }
 
 export function clearPendingDrawing(): void {
-  try {
-    sessionStorage.removeItem(PENDING_KEY);
-  } catch {
-    /* ignore */
-  }
+  pending = null;
 }
 
 // Renders a set of elements (typically an AI drawing from a `drawing` SSE

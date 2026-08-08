@@ -84,7 +84,7 @@ export function AppSidebar({
   onSubjectUpdated,
   onChatUpdated,
 }: AppSidebarProps) {
-  const { toggleSidebar, state } = useSidebar();
+  const { toggleSidebar, state, isMobile } = useSidebar();
 
   const [createType, setCreateType] = useState<"subject" | "chat">("subject");
   const [subjectName, setSubjectName] = useState("");
@@ -154,7 +154,7 @@ export function AppSidebar({
         <SidebarHeader className="p-4 group-data-[collapsible=icon]:p-2">
           <button
             onClick={() =>
-              state === "collapsed" ? toggleSidebar() : onClearChat()
+              isMobile || state === "collapsed" ? toggleSidebar() : onClearChat()
             }
             className="flex items-center gap-2 cursor-pointer group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:justify-center"
           >

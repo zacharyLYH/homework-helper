@@ -511,19 +511,21 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, WhiteboardCanvasProp
   }, [textDraft, addElement]);
 
   // Input is handled with native DOM listeners on the container rather than
-  // react-konva's Stage events, so coordinates always come from a real
-  // MouseEvent (evt.clientX/clientY) and never depend on Konva pointer mapping.
+  // react-konva's Stage events, so coordinates always come from a real pointer
+  // event (evt.clientX/clientY) and never depend on Konva pointer mapping.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    el.addEventListener("mousedown", handleMouseDown);
-    el.addEventListener("mousemove", handleMouseMove);
-    el.addEventListener("mouseup", handleMouseUp);
+    el.addEventListener("pointerdown", handleMouseDown);
+    el.addEventListener("pointermove", handleMouseMove);
+    el.addEventListener("pointerup", handleMouseUp);
+    el.addEventListener("pointercancel", handleMouseUp);
     el.addEventListener("mouseleave", handleMouseUp);
     return () => {
-      el.removeEventListener("mousedown", handleMouseDown);
-      el.removeEventListener("mousemove", handleMouseMove);
-      el.removeEventListener("mouseup", handleMouseUp);
+      el.removeEventListener("pointerdown", handleMouseDown);
+      el.removeEventListener("pointermove", handleMouseMove);
+      el.removeEventListener("pointerup", handleMouseUp);
+      el.removeEventListener("pointercancel", handleMouseUp);
       el.removeEventListener("mouseleave", handleMouseUp);
     };
   }, [handleMouseDown, handleMouseMove, handleMouseUp]);
@@ -576,7 +578,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, WhiteboardCanvasProp
     : null;
 
   return (
-    <div ref={containerRef} className="relative flex-1 overflow-hidden bg-card">
+    <div ref={containerRef} className="relative flex-1 overflow-hidden bg-card touch-none">
       <Stage
         ref={stageRef}
         width={stageSize.w}

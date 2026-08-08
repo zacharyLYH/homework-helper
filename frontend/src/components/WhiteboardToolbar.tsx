@@ -37,7 +37,7 @@ export default function WhiteboardToolbar({
   disabled = false,
 }: WhiteboardToolbarProps) {
   return (
-    <div className="flex items-center gap-2 border-b border-border bg-background px-4 py-2">
+    <div className="flex items-center gap-2 border-b border-border bg-background px-3 sm:px-4 py-2">
       <Tooltip>
         <TooltipTrigger asChild>
           <Button variant="ghost" size="icon" onClick={onBack} disabled={disabled} title="Back to chat" className="cursor-pointer">
@@ -47,9 +47,9 @@ export default function WhiteboardToolbar({
         <TooltipContent>Back to chat</TooltipContent>
       </Tooltip>
 
-      <Separator orientation="vertical" className="h-6" />
+      <Separator orientation="vertical" className="h-6 shrink-0" />
 
-      <div className="flex items-center gap-0.5">
+      <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto scrollbar-thin">
         {TOOLS.map((t) => {
           const Icon = t.icon;
           const active = tool === t.id;
@@ -73,7 +73,7 @@ export default function WhiteboardToolbar({
         })}
       </div>
 
-      <Separator orientation="vertical" className="h-6" />
+      <Separator orientation="vertical" className="h-6 shrink-0" />
 
       <Tooltip>
         <TooltipTrigger asChild>

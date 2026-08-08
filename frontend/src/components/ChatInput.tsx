@@ -22,13 +22,6 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-    ContextMenu,
-    ContextMenuTrigger,
-    ContextMenuPortal,
-    ContextMenuContent,
-    ContextMenuItem,
-} from "@/components/ui/context-menu";
 import QuoteBlock from "./QuoteBlock";
 import MathEquationDialog from "./MathEquationDialog";
 import { cn } from "@/lib/utils";
@@ -69,7 +62,7 @@ export default function ChatInput({
     const [imageMediaType, setImageMediaType] = useState<string | null>(null);
     const [imageName, setImageName] = useState("");
     const [imageIsDiagram, setImageIsDiagram] = useState(false);
-    const [selPos, setSelPos] = useState<{ top: number; left: number } | null>(null);
+    const [selPos, setSelPos] = useState<{ top: number; left: number; quote: string } | null>(null);
     const [mathDialogOpen, setMathDialogOpen] = useState(false);
     const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -99,7 +92,7 @@ export default function ChatInput({
                         return;
                     }
                     const rect = sel.getRangeAt(0).getBoundingClientRect();
-                    setSelPos({ top: rect.top - 4, left: rect.left + rect.width / 2 });
+                    setSelPos({ top: rect.top - 4, left: rect.left + rect.width / 2, quote: sel.toString().trim() });
                 } else {
                     setSelPos(null);
                 }
@@ -111,6 +104,25 @@ export default function ChatInput({
             clearTimeout(debounceRef.current);
         };
     }, []);
+
+    const quoteMenuRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (!selPos) return;
+        const onPointerDown = (e: MouseEvent) => {
+            if (quoteMenuRef.current && !quoteMenuRef.current.contains(e.target as Node)) {
+                setSelPos(null);
+            }
+        };
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === "Escape") setSelPos(null);
+        };
+        document.addEventListener("pointerdown", onPointerDown);
+        document.addEventListener("keydown", onKey);
+        return () => {
+            document.removeEventListener("pointerdown", onPointerDown);
+            document.removeEventListener("keydown", onKey);
+        };
+    }, [selPos]);
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -176,20 +188,18 @@ export default function ChatInput({
     }, [input]);
 
     const handleQuote = () => {
-        const text = window.getSelection()?.toString().trim();
-        if (text) onQuote?.(text);
+        if (selPos?.quote) onQuote?.(selPos.quote);
         setSelPos(null);
     };
 
     return (
-        <ContextMenu open={!!selPos} onOpenChange={(o) => { if (!o) setSelPos(null); }}>
-            <ContextMenuTrigger asChild>
-                <form
-                    onSubmit={handleSubmit}
-                    className={cn("border-t border-border bg-background", !selectedChatId && "cursor-not-allowed")}
-                >
-                    <div className="max-w-3xl mx-auto p-4">
-                        <div className="rounded-3xl border border-border bg-muted/30 shadow-xs transition-shadow focus-within:shadow-sm focus-within:border-ring/50">
+        <>
+            <form
+                onSubmit={handleSubmit}
+                className={cn("border-t border-border bg-background", !selectedChatId && "cursor-not-allowed")}
+            >
+                <div className="max-w-3xl mx-auto p-2 sm:p-4">
+                    <div className="rounded-3xl border border-border bg-muted/30 shadow-xs transition-shadow focus-within:shadow-sm focus-within:border-ring/50">
                             {quote && (
                                 <div className="flex items-center gap-2 px-4 pt-3">
                                     <QuoteBlock text={quote} onClear={onClearQuote} />
@@ -346,24 +356,27 @@ export default function ChatInput({
                             </div>
                         </div>
                     </div>
-                </form>
-            </ContextMenuTrigger>
+            </form>
             {selPos && (
-                <ContextMenuPortal>
-                    <ContextMenuContent
-                        style={{ position: 'fixed', top: selPos.top, left: selPos.left, transform: 'translate(-50%, -100%)' }}
-                    >
-                        <ContextMenuItem onClick={handleQuote} className="cursor-pointer gap-1 px-1.5 py-1 text-xs">
-                            <Quote className="w-4 h-4" /> Ask Homework Helper
-                        </ContextMenuItem>
-                    </ContextMenuContent>
-                </ContextMenuPortal>
+                <div
+                    ref={quoteMenuRef}
+                    role="menu"
+                    className="fixed z-50 flex cursor-pointer items-center gap-2 rounded-md border border-border bg-popover p-1.5 text-xs text-popover-foreground shadow-md"
+                    style={{
+                        top: selPos.top + (selPos.top < 48 ? 12 : 0),
+                        left: selPos.left,
+                        transform: selPos.top < 48 ? "translate(-50%, 0)" : "translate(-50%, -100%)",
+                    }}
+                    onClick={handleQuote}
+                >
+                    <Quote className="h-3.5 w-3.5 text-muted-foreground" /> Ask Homework Helper
+                </div>
             )}
             <MathEquationDialog
                 open={mathDialogOpen}
                 onOpenChange={setMathDialogOpen}
                 onInsert={handleMathInsert}
             />
-        </ContextMenu>
+        </>
     );
 }

@@ -86,8 +86,8 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  // Adopt the pending whiteboard drawing for the active chat. Preserved across
-  // refresh (sessionStorage); discarded when the user switches to a different chat.
+  // Adopt the pending whiteboard drawing for the active chat. Kept in memory
+  // only; dropped on refresh and discarded when the user switches chats.
   useEffect(() => {
     const pending = getPendingDrawing();
     if (selectedChatId != null && pending && pending.chatId === selectedChatId) {
@@ -306,6 +306,7 @@ export default function ChatPage() {
           <ChatMessages selectedChatId={selectedChatId} messages={messages} streaming={streaming} toolCalls={toolCalls} onRetry={handleRetry} />
         </div>
         <ChatInput
+          key={selectedChatId}
           onSubmit={handleSubmitMessage}
           streaming={streaming}
           selectedChatId={selectedChatId}
