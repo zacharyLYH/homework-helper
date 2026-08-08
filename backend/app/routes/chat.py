@@ -72,7 +72,7 @@ def _save_user_message(req: ChatRequest) -> None:
     )
 
 
-def _save_assistant_message(chat_id: int | None, full_reply: str, model_used: str, total_usage: dict, tool_calls: list[dict] | None = None) -> None:
+def _save_assistant_message(chat_id: int | None, full_reply: str, model_used: str, total_usage: dict, tool_calls: list[dict] | None = None, drawing_elements: list[dict] | None = None) -> None:
     metadata = {"model": model_used, "usage": total_usage}
     if tool_calls:
         metadata["tool_calls"] = tool_calls
@@ -81,6 +81,7 @@ def _save_assistant_message(chat_id: int | None, full_reply: str, model_used: st
         role="assistant",
         content=full_reply or "No response generated.",
         metadata_json=json.dumps(metadata),
+        drawing_json=json.dumps(drawing_elements) if drawing_elements else None,
         token_count=total_usage["total_tokens"],
     )
     logger = get_structured_logger()
@@ -184,12 +185,13 @@ async def chat_stream(req: ChatRequest, request: Request, user: User = Depends(g
         queue: asyncio.Queue = asyncio.Queue()
         pending_tool_calls = 0
         tool_calls_meta: list[dict] = []
+        drawing_elements: list[dict] | None = None
         rejection_reason = ""
         rejection_score = 0.0
         alignment_done = asyncio.Event()
 
         async def _stream_graph():
-            nonlocal full_reply, model_used, total_usage, pending_tool_calls, tool_calls_meta, rejection_reason, rejection_score
+            nonlocal full_reply, model_used, total_usage, pending_tool_calls, tool_calls_meta, drawing_elements, rejection_reason, rejection_score
             try:
                 async for event in compiled_graph.astream_events(
                     initial_state, config=config, version="v2"
@@ -233,6 +235,7 @@ async def chat_stream(req: ChatRequest, request: Request, user: User = Depends(g
                                 if getattr(tm, "tool_call_id", None) in whiteboard_ids:
                                     try:
                                         elements = json.loads(tm.content)
+                                        drawing_elements = elements if isinstance(elements, list) else None
                                         await queue.put(f"data: {json.dumps({'type': 'drawing', 'elements': elements})}\n\n")
                                     except (json.JSONDecodeError, TypeError):
                                         pass
@@ -321,6 +324,7 @@ async def chat_stream(req: ChatRequest, request: Request, user: User = Depends(g
         _save_assistant_message(
             req.chat_id, full_reply, model_used, total_usage,
             tool_calls=tool_calls_meta if tool_calls_meta else None,
+            drawing_elements=drawing_elements,
         )
         tool_names = [tc["name"] for tc in tool_calls_meta] if tool_calls_meta else []
         structured_log("chat_response", model=model_used, usage=total_usage, tools_used=tool_names, reply_length=len(full_reply), reply_preview=full_reply[:500])

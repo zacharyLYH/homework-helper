@@ -3,10 +3,21 @@ DROP TABLE IF EXISTS chats;
 DROP TABLE IF EXISTS subjects;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS verification_codes;
-DELETE FROM sqlite_sequence;
+
+-- Sequences reset automatically when the tables are dropped & recreated,
+-- so the explicit sqlite_sequence reset is unnecessary (and errors on a
+-- fresh DB where the table does not yet exist).
 
 ATTACH DATABASE 'data/debug.db' AS debug;
-DELETE FROM debug.structured_logs;
+DROP TABLE IF EXISTS debug.structured_logs;
+CREATE TABLE debug.structured_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    message_id INTEGER,
+    log TEXT NOT NULL,
+    _req_id TEXT NOT NULL
+);
 DETACH DATABASE debug;
 
 CREATE TABLE users (
@@ -46,6 +57,7 @@ CREATE TABLE messages (
     image_base64 TEXT,
     image_media_type TEXT,
     metadata_json TEXT,
+    drawing_json TEXT,
     quote TEXT,
     token_count INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -73,17 +85,19 @@ INSERT INTO chats (subject_id, user_id, title, input_tokens, output_tokens, tota
 INSERT INTO chats (subject_id, user_id, title, input_tokens, output_tokens, total_tokens) VALUES (2, 1, 'Kinematics', 55, 50, 105);
 INSERT INTO chats (subject_id, user_id, title, input_tokens, output_tokens, total_tokens) VALUES (3, 2, 'SN1 vs SN2', 45, 65, 110);
 
-INSERT INTO messages (chat_id, role, content, metadata_json, token_count, quote) VALUES
-(1, 'user', 'What is the chain rule?', NULL, 0, NULL),
-(1, 'assistant', 'The chain rule: d/dx[f(g(x))] = f''(g(x)) * g''(x).', '{"node":"math","tool_calls":[{"name":"web_search","args":{"query":"chain rule formula"},"id":"seed_call_1"},{"name":"calculator","args":{"expression":"d/dx sin(x^2)"},"id":"seed_call_2"}],"token_usage":{"input_tokens":50,"output_tokens":60,"total_tokens":110}}', 110, NULL),
-(1, 'user', 'Can you give me an example?', NULL, 0, 'd/dx[f(g(x))] = f''(g(x)) * g''(x)'),
-(1, 'assistant', 'If y = sin(x²), then dy/dx = cos(x²) * 2x.', '{"node":"math","tool_calls":[{"name":"calculator","args":{"expression":"d/dx sin(x^2)"},"id":"seed_call_3"}],"token_usage":{"input_tokens":80,"output_tokens":45,"total_tokens":125}}', 125, NULL),
-(2, 'user', 'Evaluate integral of x*e^x', NULL, 0, NULL),
-(2, 'assistant', '∫x*e^x dx = e^x(x-1) + C', '{"node":"math","tool_calls":[{"name":"calculator","args":{"expression":"integral x*e^x"},"id":"seed_call_4"}],"token_usage":{"input_tokens":60,"output_tokens":70,"total_tokens":130}}', 130, NULL),
-(3, 'user', 'Car accelerates from rest at 2m/s². Position at t=5s?', NULL, 0, NULL),
-(3, 'assistant', 'x = ½at² = ½ * 2 * 25 = 25 meters', '{"node":"math","tool_calls":[{"name":"calculator","args":{"expression":"0.5 * 2 * 25"},"id":"seed_call_5"}],"token_usage":{"input_tokens":55,"output_tokens":50,"total_tokens":105}}', 105, NULL),
-(4, 'user', 'Difference between SN1 and SN2?', NULL, 0, NULL),
-(4, 'assistant', 'SN1: two-step, carbocation, racemization, tertiary. SN2: one-step, backside attack, inversion, primary.', '{"node":"general","token_usage":{"input_tokens":45,"output_tokens":65,"total_tokens":110}}', 110, NULL);
+INSERT INTO messages (chat_id, role, content, metadata_json, drawing_json, token_count, quote) VALUES
+(1, 'user', 'What is the chain rule?', NULL, NULL, 0, NULL),
+(1, 'assistant', 'The chain rule: d/dx[f(g(x))] = f''(g(x)) * g''(x).', '{"node":"math","tool_calls":[{"name":"web_search","args":{"query":"chain rule formula"},"id":"seed_call_1"},{"name":"calculator","args":{"expression":"d/dx sin(x^2)"},"id":"seed_call_2"}],"token_usage":{"input_tokens":50,"output_tokens":60,"total_tokens":110}}',
+'[{"id":"seed_rect_1","type":"rect","x":40,"y":60,"w":140,"h":60,"stroke":null,"strokeWidth":2,"fill":"#eef2ff","text":"f(x)"},{"id":"seed_rect_2","type":"rect","x":280,"y":60,"w":140,"h":60,"stroke":null,"strokeWidth":2,"fill":"#eef2ff","text":"g(x)"},{"id":"seed_arrow_1","type":"arrow","from_pos":[175,90],"to_pos":[285,90],"stroke":null,"strokeWidth":2,"label":"compose"}]',
+ 110, NULL),
+(1, 'user', 'Can you give me an example?', NULL, NULL, 0, 'd/dx[f(g(x))] = f''(g(x)) * g''(x)'),
+(1, 'assistant', 'If y = sin(x²), then dy/dx = cos(x²) * 2x.', '{"node":"math","tool_calls":[{"name":"calculator","args":{"expression":"d/dx sin(x^2)"},"id":"seed_call_3"}],"token_usage":{"input_tokens":80,"output_tokens":45,"total_tokens":125}}', NULL, 125, NULL),
+(2, 'user', 'Evaluate integral of x*e^x', NULL, NULL, 0, NULL),
+(2, 'assistant', '∫x*e^x dx = e^x(x-1) + C', '{"node":"math","tool_calls":[{"name":"calculator","args":{"expression":"integral x*e^x"},"id":"seed_call_4"}],"token_usage":{"input_tokens":60,"output_tokens":70,"total_tokens":130}}', NULL, 130, NULL),
+(3, 'user', 'Car accelerates from rest at 2m/s². Position at t=5s?', NULL, NULL, 0, NULL),
+(3, 'assistant', 'x = ½at² = ½ * 2 * 25 = 25 meters', '{"node":"math","tool_calls":[{"name":"calculator","args":{"expression":"0.5 * 2 * 25"},"id":"seed_call_5"}],"token_usage":{"input_tokens":55,"output_tokens":50,"total_tokens":105}}', NULL, 105, NULL),
+(4, 'user', 'Difference between SN1 and SN2?', NULL, NULL, 0, NULL),
+(4, 'assistant', 'SN1: two-step, carbocation, racemization, tertiary. SN2: one-step, backside attack, inversion, primary.', '{"node":"general","token_usage":{"input_tokens":45,"output_tokens":65,"total_tokens":110}}', NULL, 110, NULL);
 
 INSERT INTO subjects (user_id, name) VALUES (3, 'AP Biology');
 INSERT INTO subjects (user_id, name) VALUES (3, 'US History');
@@ -99,52 +113,54 @@ INSERT INTO chats (subject_id, user_id, title, input_tokens, output_tokens, tota
 INSERT INTO chats (subject_id, user_id, title, input_tokens, output_tokens, total_tokens) VALUES (7, 3, 'Binary trees', 160, 230, 390);
 INSERT INTO chats (subject_id, user_id, title, input_tokens, output_tokens, total_tokens) VALUES (7, 3, 'Sorting algorithms', 90, 120, 210);
 
-INSERT INTO messages (chat_id, role, content, metadata_json, token_count, quote) VALUES
+INSERT INTO messages (chat_id, role, content, metadata_json, drawing_json, token_count, quote) VALUES
 -- Chat 5: Cell division (AP Biology, guide)
-(5, 'user', 'Explain the stages of mitosis', NULL, 0, NULL),
-(5, 'assistant', 'Mitosis has **4 main stages**:\n\n1. **Prophase** — Chromosomes condense, nuclear envelope breaks down.\n2. **Metaphase** — Chromosomes align at the metaphase plate.\n3. **Anaphase** — Sister chromatids separate and move to opposite poles.\n4. **Telophase** — Nuclear membranes reform, chromosomes decondense.\n\n$$\\text{Mitosis} = \\text{Prophase} + \\text{Metaphase} + \\text{Anaphase} + \\text{Telophase}$$', '{"node":"biology","tool_calls":[{"name":"web_search","args":{"query":"mitosis stages diagram"},"id":"seed_mitosis_1"}],"token_usage":{"input_tokens":70,"output_tokens":100,"total_tokens":170}}', 170, NULL),
-(5, 'user', 'How long does each stage take?', NULL, 0, 'Chromosomes align at the metaphase plate.'),
-(5, 'assistant', 'Typical durations in mammalian cells:\n\n| Stage | Duration |\n|-------|----------|\n| Prophase | ~30-60 min |\n| Metaphase | ~20-30 min |\n| Anaphase | ~5-10 min |\n| Telophase | ~20-30 min |\n\n> Anaphase is the shortest — chromatids move fast at ~1 μm/min.', '{"node":"biology","tool_calls":[{"name":"web_search","args":{"query":"mitosis stage durations mammalian cells"},"id":"seed_mitosis_2"}],"token_usage":{"input_tokens":60,"output_tokens":80,"total_tokens":140}}', 140, NULL),
+(5, 'user', 'Explain the stages of mitosis', NULL, NULL, 0, NULL),
+(5, 'assistant', 'Mitosis has **4 main stages**:\n\n1. **Prophase** — Chromosomes condense, nuclear envelope breaks down.\n2. **Metaphase** — Chromosomes align at the metaphase plate.\n3. **Anaphase** — Sister chromatids separate and move to opposite poles.\n4. **Telophase** — Nuclear membranes reform, chromosomes decondense.\n\n$$\\text{Mitosis} = \\text{Prophase} + \\text{Metaphase} + \\text{Anaphase} + \\text{Telophase}$$', '{"node":"biology","tool_calls":[{"name":"web_search","args":{"query":"mitosis stages"},"id":"seed_mitosis_1"}],"token_usage":{"input_tokens":70,"output_tokens":100,"total_tokens":170}}', NULL, 170, NULL),
+(5, 'user', 'How long does each stage take?', NULL, NULL, 0, 'Chromosomes align at the metaphase plate.'),
+(5, 'assistant', 'Typical durations in mammalian cells:\n\n| Stage | Duration |\n|-------|----------|\n| Prophase | ~30-60 min |\n| Metaphase | ~20-30 min |\n| Anaphase | ~5-10 min |\n| Telophase | ~20-30 min |\n\n> Anaphase is the shortest — chromatids move fast at ~1 μm/min.', '{"node":"biology","tool_calls":[{"name":"web_search","args":{"query":"mitosis stage durations mammalian cells"},"id":"seed_mitosis_2"}],"token_usage":{"input_tokens":60,"output_tokens":80,"total_tokens":140}}', NULL, 140, NULL),
 
 -- Chat 6: Meiosis vs Mitosis (AP Biology, just-solve)
-(6, 'user', 'Difference between meiosis and mitosis?', NULL, 0, NULL),
-(6, 'assistant', '| Feature | Mitosis | Meiosis |\n|---------|---------|---------|\n| Divisions | 1 | 2 |\n| Daughter cells | 2 diploid | 4 haploid |\n| Genetic variation | None (identical) | Crossing over & independent assortment |\n| Purpose | Growth, repair | Gamete production |', '{"node":"biology","token_usage":{"input_tokens":60,"output_tokens":90,"total_tokens":150}}', 150, NULL),
+(6, 'user', 'Difference between meiosis and mitosis?', NULL, NULL, 0, NULL),
+(6, 'assistant', '| Feature | Mitosis | Meiosis |\n|---------|---------|---------|\n| Divisions | 1 | 2 |\n| Daughter cells | 2 diploid | 4 haploid |\n| Genetic variation | None (identical) | Crossing over & independent assortment |\n| Purpose | Growth, repair | Gamete production |', '{"node":"biology","token_usage":{"input_tokens":60,"output_tokens":90,"total_tokens":150}}', NULL, 150, NULL),
 
 -- Chat 7: Civil War causes (US History, guide)
-(7, 'user', 'What caused the Civil War?', NULL, 0, NULL),
-(7, 'assistant', 'Historians identify **4 primary causes**:\n\n1. **Slavery** — Moral and economic divide between North and South\n2. **States'' Rights** — Southern belief in nullification and secession\n3. **Economic differences** — Industrial North vs. agrarian South\n4. **Political breakdown** — Failure of compromises (Missouri Compromise, Compromise of 1850, Kansas-Nebraska Act)\n\n$$\\text{Secession} \\to \\text{Fort Sumter} \\to \\text{Civil War}$$', '{"node":"history","tool_calls":[{"name":"web_search","args":{"query":"primary causes of US Civil War historiography"},"id":"seed_civilwar_1"}],"token_usage":{"input_tokens":55,"output_tokens":105,"total_tokens":160}}', 160, NULL),
-(7, 'user', 'What was the Emancipation Proclamation?', NULL, 0, 'Secession \\to Fort Sumter \\to Civil War'),
-(7, 'assistant', 'Issued by **Lincoln** on **January 1, 1863**, it declared slaves in Confederate states **free**.\n\nKey points:\n- Only applied to states *in rebellion* (not border states)\n- Changed the war goal from *preserving the Union* to *ending slavery*\n- Paved the way for the **13th Amendment**\n\n> "All persons held as slaves ... shall be then, thenceforward, and forever free."', '{"node":"history","tool_calls":[{"name":"web_search","args":{"query":"Emancipation Proclamation text and impact"},"id":"seed_civilwar_2"}],"token_usage":{"input_tokens":65,"output_tokens":95,"total_tokens":160}}', 160, NULL),
-(7, 'user', 'What role did economics play?', NULL, 0, 'Economic differences \\u2014 Industrial North vs. agrarian South'),
-(7, 'assistant', 'The North and South had **divergent economies**:\n\n- **North**: Manufacturing, railroads, wage labor — wanted tariffs to protect industry\n- **South**: Cash-crop agriculture (cotton, tobacco) — relied on slavery and free trade\n\n$$\\text{Tariff of Abominations (1828)} \\to \\text{Nullification Crisis} \\to \\text{Sectional tension}$$', '{"node":"history","token_usage":{"input_tokens":60,"output_tokens":70,"total_tokens":130}}', 130, NULL),
+(7, 'user', 'What caused the Civil War?', NULL, NULL, 0, NULL),
+(7, 'assistant', 'Historians identify **4 primary causes**:\n\n1. **Slavery** — Moral and economic divide between North and South\n2. **States'' Rights** — Southern belief in nullification and secession\n3. **Economic differences** — Industrial North vs. agrarian South\n4. **Political breakdown** — Failure of compromises (Missouri Compromise, Compromise of 1850, Kansas-Nebraska Act)\n\n$$\\text{Secession} \\to \\text{Fort Sumter} \\to \\text{Civil War}$$', '{"node":"history","tool_calls":[{"name":"web_search","args":{"query":"primary causes of US Civil War historiography"},"id":"seed_civilwar_1"}],"token_usage":{"input_tokens":55,"output_tokens":105,"total_tokens":160}}', NULL, 160, NULL),
+(7, 'user', 'What was the Emancipation Proclamation?', NULL, NULL, 0, 'Secession \\to Fort Sumter \\to Civil War'),
+(7, 'assistant', 'Issued by **Lincoln** on **January 1, 1863**, it declared slaves in Confederate states **free**.\n\nKey points:\n- Only applied to states *in rebellion* (not border states)\n- Changed the war goal from *preserving the Union* to *ending slavery*\n- Paved the way for the **13th Amendment**\n\n> "All persons held as slaves ... shall be then, thenceforward, and forever free."', '{"node":"history","tool_calls":[{"name":"web_search","args":{"query":"Emancipation Proclamation text and impact"},"id":"seed_civilwar_2"}],"token_usage":{"input_tokens":65,"output_tokens":95,"total_tokens":160}}', NULL, 160, NULL),
+(7, 'user', 'What role did economics play?', NULL, NULL, 0, 'Economic differences \\u2014 Industrial North vs. agrarian South'),
+(7, 'assistant', 'The North and South had **divergent economies**:\n\n- **North**: Manufacturing, railroads, wage labor — wanted tariffs to protect industry\n- **South**: Cash-crop agriculture (cotton, tobacco) — relied on slavery and free trade\n\n$$\\text{Tariff of Abominations (1828)} \\to \\text{Nullification Crisis} \\to \\text{Sectional tension}$$', '{"node":"history","token_usage":{"input_tokens":60,"output_tokens":70,"total_tokens":130}}', NULL, 130, NULL),
 
 -- Chat 8: Reconstruction (US History, just-solve)
-(8, 'user', 'Summarize the Reconstruction era', NULL, 0, NULL),
-(8, 'assistant', '**Reconstruction (1865–1877)** — the period after the Civil War when the US reintegrated Southern states and defined freedmen''s rights.\n\nKey developments:\n- **13th Amendment** — abolished slavery\n- **14th Amendment** — citizenship & equal protection\n- **15th Amendment** — Black male suffrage\n- **Freedmen''s Bureau** — education, labor, healthcare\n- **Black Codes & Jim Crow** — systematic discrimination\n\nReconstruction ended with the **Compromise of 1877**, withdrawing federal troops from the South.', '{"node":"history","tool_calls":[{"name":"web_search","args":{"query":"Reconstruction era summary key events"},"id":"seed_recon_1"}],"token_usage":{"input_tokens":50,"output_tokens":130,"total_tokens":180}}', 180, NULL),
-(8, 'user', 'What was the Freedmen''s Bureau?', NULL, 0, NULL),
-(8, 'assistant', 'The **Freedmen''s Bureau** (1865–1872) was a federal agency that:\n\n- Established **~1,000 schools** for formerly enslaved people\n- Provided **food, housing, and medical aid**\n- Helped negotiate **labor contracts**\n- Reunited **families separated by slavery**\n\nIt was one of the first federal social welfare programs in US history.', '{"node":"history","token_usage":{"input_tokens":40,"output_tokens":70,"total_tokens":110}}', 110, NULL),
+(8, 'user', 'Summarize the Reconstruction era', NULL, NULL, 0, NULL),
+(8, 'assistant', '**Reconstruction (1865–1877)** — the period after the Civil War when the US reintegrated Southern states and defined freedmen''s rights.\n\nKey developments:\n- **13th Amendment** — abolished slavery\n- **14th Amendment** — citizenship & equal protection\n- **15th Amendment** — Black male suffrage\n- **Freedmen''s Bureau** — education, labor, healthcare\n- **Black Codes & Jim Crow** — systematic discrimination\n\nReconstruction ended with the **Compromise of 1877**, withdrawing federal troops from the South.', '{"node":"history","tool_calls":[{"name":"web_search","args":{"query":"Reconstruction era summary key events"},"id":"seed_recon_1"}],"token_usage":{"input_tokens":50,"output_tokens":130,"total_tokens":180}}', NULL, 180, NULL),
+(8, 'user', 'What was the Freedmen''s Bureau?', NULL, NULL, 0, NULL),
+(8, 'assistant', 'The **Freedmen''s Bureau** (1865–1872) was a federal agency that:\n\n- Established **~1,000 schools** for formerly enslaved people\n- Provided **food, housing, and medical aid**\n- Helped negotiate **labor contracts**\n- Reunited **families separated by slavery**\n\nIt was one of the first federal social welfare programs in US history.', '{"node":"history","token_usage":{"input_tokens":40,"output_tokens":70,"total_tokens":110}}', NULL, 110, NULL),
 
 -- Chat 9: Limits & continuity (AP Calculus AB, guide)
-(9, 'user', 'Explain the formal definition of a limit', NULL, 0, NULL),
-(9, 'assistant', 'The **epsilon-delta definition**:\n\n$$\\lim_{x \\to a} f(x) = L \\iff \\forall \\varepsilon > 0, \\; \\exists \\delta > 0 \\text{ such that } 0 < |x - a| < \\delta \\implies |f(x) - L| < \\varepsilon$$\n\nIntuitively: you can make $f(x)$ *arbitrarily close* to $L$ by picking $x$ *sufficiently close* to $a$.', '{"node":"math","tool_calls":[{"name":"calculator","args":{"expression":"limit definition"},"id":"seed_limits_1"}],"token_usage":{"input_tokens":60,"output_tokens":90,"total_tokens":150}}', 150, NULL),
-(9, 'user', 'Is $f(x) = \\frac{1}{x}$ continuous at $x = 0$?', NULL, 0, '\\forall \\varepsilon > 0, \\; \\exists \\delta > 0 \\text{ such that } 0 < |x - a| < \\delta \\implies |f(x) - L| < \\varepsilon'),
-(9, 'assistant', 'No — $f(x) = \\frac{1}{x}$ is **not continuous** at $x = 0$ because:\n\n$$\\lim_{x \\to 0^-} \\frac{1}{x} = -\\infty \\quad \\text{and} \\quad \\lim_{x \\to 0^+} \\frac{1}{x} = +\\infty$$\n\nThe limit does not exist (infinite discontinuity). For continuity at $a$, we need:\n$$\\lim_{x \\to a} f(x) = f(a)$$\nAnd $f(0)$ is undefined.', '{"node":"math","tool_calls":[{"name":"calculator","args":{"expression":"1/0"},"id":"seed_limits_2"},{"name":"web_search","args":{"query":"infinite discontinuity examples"},"id":"seed_limits_3"}],"token_usage":{"input_tokens":50,"output_tokens":100,"total_tokens":150}}', 150, NULL),
+(9, 'user', 'Explain the formal definition of a limit', NULL, NULL, 0, NULL),
+(9, 'assistant', 'The **epsilon-delta definition**:\n\n$$\\lim_{x \\to a} f(x) = L \\iff \\forall \\varepsilon > 0, \\; \\exists \\delta > 0 \\text{ such that } 0 < |x - a| < \\delta \\implies |f(x) - L| < \\varepsilon$$\n\nIntuitively: you can make $f(x)$ *arbitrarily close* to $L$ by picking $x$ *sufficiently close* to $a$.', '{"node":"math","tool_calls":[{"name":"calculator","args":{"expression":"limit definition"},"id":"seed_limits_1"}],"token_usage":{"input_tokens":60,"output_tokens":90,"total_tokens":150}}', NULL, 150, NULL),
+(9, 'user', 'Is $f(x) = \\frac{1}{x}$ continuous at $x = 0$?', NULL, NULL, 0, '\\forall \\varepsilon > 0, \\; \\exists \\delta > 0 \\text{ such that } 0 < |x - a| < \\delta \\implies |f(x) - L| < \\varepsilon'),
+(9, 'assistant', 'No — $f(x) = \\frac{1}{x}$ is **not continuous** at $x = 0$ because:\n\n$$\\lim_{x \\to 0^-} \\frac{1}{x} = -\\infty \\quad \\text{and} \\quad \\lim_{x \\to 0^+} \\frac{1}{x} = +\\infty$$\n\nThe limit does not exist (infinite discontinuity). For continuity at $a$, we need:\n$$\\lim_{x \\to a} f(x) = f(a)$$\nAnd $f(0)$ is undefined.', '{"node":"math","tool_calls":[{"name":"calculator","args":{"expression":"1/0"},"id":"seed_limits_2"},{"name":"web_search","args":{"query":"infinite discontinuity examples"},"id":"seed_limits_3"}],"token_usage":{"input_tokens":50,"output_tokens":100,"total_tokens":150}}', NULL, 150, NULL),
 
 -- Chat 10: Derivative practice (AP Calculus AB, just-solve)
-(10, 'user', 'Find the derivative of $f(x) = x^3 \\sin(x)$', NULL, 0, NULL),
-(10, 'assistant', 'Use the **product rule**: $\\frac{d}{dx}[u \\cdot v] = u''v + uv''$\n\nLet $u = x^3$, $v = \\sin(x)$:\n\n$$f''(x) = 3x^2 \\cdot \\sin(x) + x^3 \\cdot \\cos(x) = x^2 (3\\sin(x) + x \\cos(x))$$\n\n> Check: at $x = \\pi$, $f''(\\pi) = \\pi^2 (0 + \\pi \\cdot (-1)) = -\\pi^3$', '{"node":"math","tool_calls":[{"name":"calculator","args":{"expression":"derivative of x^3 * sin(x)"},"id":"seed_deriv_1"}],"token_usage":{"input_tokens":40,"output_tokens":100,"total_tokens":140}}', 140, NULL),
-(10, 'user', 'Find $\\frac{dy}{dx}$ for $y = \\ln(\\sec(x) + \\tan(x))$', NULL, 0, NULL),
-(10, 'assistant', '$$y = \\ln(\\sec x + \\tan x)$$\n\n$$\\frac{dy}{dx} = \\frac{\\sec x \\tan x + \\sec^2 x}{\\sec x + \\tan x} = \\frac{\\sec x (\\tan x + \\sec x)}{\\sec x + \\tan x} = \\sec x$$\n\nSo $\\frac{d}{dx} \\ln(\\sec x + \\tan x) = \\sec x$.', '{"node":"math","tool_calls":[{"name":"calculator","args":{"expression":"derivative of ln(sec(x) + tan(x))"},"id":"seed_deriv_2"}],"token_usage":{"input_tokens":50,"output_tokens":100,"total_tokens":150}}', 150, NULL),
+(10, 'user', 'Find the derivative of $f(x) = x^3 \\sin(x)$', NULL, NULL, 0, NULL),
+(10, 'assistant', 'Use the **product rule**: $\\frac{d}{dx}[u \\cdot v] = u''v + uv''$\n\nLet $u = x^3$, $v = \\sin(x)$:\n\n$$f''(x) = 3x^2 \\cdot \\sin(x) + x^3 \\cdot \\cos(x) = x^2 (3\\sin(x) + x \\cos(x))$$\n\n> Check: at $x = \\pi$, $f''(\\pi) = \\pi^2 (0 + \\pi \\cdot (-1)) = -\\pi^3$', '{"node":"math","tool_calls":[{"name":"calculator","args":{"expression":"derivative of x^3 * sin(x)"},"id":"seed_deriv_1"}],"token_usage":{"input_tokens":40,"output_tokens":100,"total_tokens":140}}', NULL, 140, NULL),
+(10, 'user', 'Find $\\frac{dy}{dx}$ for $y = \\ln(\\sec(x) + \\tan(x))$', NULL, NULL, 0, NULL),
+(10, 'assistant', '$$y = \\ln(\\sec x + \\tan x)$$\n\n$$\\frac{dy}{dx} = \\frac{\\sec x \\tan x + \\sec^2 x}{\\sec x + \\tan x} = \\frac{\\sec x (\\tan x + \\sec x)}{\\sec x + \\tan x} = \\sec x$$\n\nSo $\\frac{d}{dx} \\ln(\\sec x + \\tan x) = \\sec x$.', '{"node":"math","tool_calls":[{"name":"calculator","args":{"expression":"derivative of ln(sec(x) + tan(x))"},"id":"seed_deriv_2"}],"token_usage":{"input_tokens":50,"output_tokens":100,"total_tokens":150}}', NULL, 150, NULL),
 
 -- Chat 11: Binary trees (Computer Science, guide)
-(11, 'user', 'Explain binary search trees', NULL, 0, NULL),
-(11, 'assistant', 'A **Binary Search Tree (BST)** is a tree where each node has at most 2 children:\n\n```\n        8\n       / \\\n      3   10\n     / \\    \\\n    1   6    14\n       / \\\n      4   7\n```\n\n**Properties:**\n- Left subtree < node\n- Right subtree > node\n- In-order traversal yields sorted order\n\n**Operations:** `O(h)` where $h = \\text{height}$ (worst $O(n)$, balanced $O(\\log n)$)', '{"node":"cs","tool_calls":[{"name":"web_search","args":{"query":"binary search tree properties and operations"},"id":"seed_bst_1"}],"token_usage":{"input_tokens":60,"output_tokens":110,"total_tokens":170}}', 170, NULL),
-(11, 'user', 'Implement a BST in Python', NULL, 0, 'In-order traversal yields sorted order'),
-(11, 'assistant', '```python\nclass Node:\n    def __init__(self, val):\n        self.val = val\n        self.left = None\n        self.right = None\n\ndef insert(root, val):\n    if not root:\n        return Node(val)\n    if val < root.val:\n        root.left = insert(root.left, val)\n    else:\n        root.right = insert(root.right, val)\n    return root\n\ndef inorder(root):\n    if root:\n        yield from inorder(root.left)\n        yield root.val\n        yield from inorder(root.right)\n\ndef search(root, val):\n    if not root or root.val == val:\n        return root\n    return search(root.left, val) if val < root.val else search(root.right, val)\n```\n\n**Usage:** `root = insert(None, 8); insert(root, 3); list(inorder(root))  # [3, 8]`', '{"node":"cs","tool_calls":[{"name":"calculator","args":{"expression":"binary search tree insertion complexity"},"id":"seed_bst_2"}],"token_usage":{"input_tokens":70,"output_tokens":120,"total_tokens":190}}', 190, NULL),
+(11, 'user', 'Explain binary search trees', NULL, NULL, 0, NULL),
+(11, 'assistant', 'A **Binary Search Tree (BST)** is a tree where each node has at most 2 children:\n\n```\n        8\n       / \\\n      3   10\n     / \\    \\\n    1   6    14\n       / \\\n      4   7\n```\n\n**Properties:**\n- Left subtree < node\n- Right subtree > node\n- In-order traversal yields sorted order\n\n**Operations:** `O(h)` where $h = \\text{height}$ (worst $O(n)$, balanced $O(\\log n)$)', '{"node":"cs","tool_calls":[{"name":"web_search","args":{"query":"binary search tree properties and operations"},"id":"seed_bst_1"}],"token_usage":{"input_tokens":60,"output_tokens":110,"total_tokens":170}}',
+'[{"id":"seed_bst_rect_1","type":"rect","x":180,"y":30,"w":70,"h":40,"stroke":null,"strokeWidth":2,"fill":"#eef2ff","text":"8"},{"id":"seed_bst_rect_2","type":"rect","x":60,"y":110,"w":70,"h":40,"stroke":null,"strokeWidth":2,"fill":"#eef2ff","text":"3"},{"id":"seed_bst_rect_3","type":"rect","x":310,"y":110,"w":70,"h":40,"stroke":null,"strokeWidth":2,"fill":"#eef2ff","text":"10"},{"id":"seed_bst_arrow_1","type":"arrow","from_pos":[205,72],"to_pos":[90,108],"stroke":null,"strokeWidth":2,"label":"left"},{"id":"seed_bst_arrow_2","type":"arrow","from_pos":[230,72],"to_pos":[330,108],"stroke":null,"strokeWidth":2,"label":"right"}]',
+ 170, NULL),
+(11, 'user', 'Implement a BST in Python', NULL, NULL, 0, 'In-order traversal yields sorted order'),
+(11, 'assistant', '```python\nclass Node:\n    def __init__(self, val):\n        self.val = val\n        self.left = None\n        self.right = None\n\ndef insert(root, val):\n    if not root:\n        return Node(val)\n    if val < root.val:\n        root.left = insert(root.left, val)\n    else:\n        root.right = insert(root.right, val)\n    return root\n\ndef inorder(root):\n    if root:\n        yield from inorder(root.left)\n        yield root.val\n        yield from inorder(root.right)\n\ndef search(root, val):\n    if not root or root.val == val:\n        return root\n    return search(root.left, val) if val < root.val else search(root.right, val)\n```\n\n**Usage:** `root = insert(None, 8); insert(root, 3); list(inorder(root))  # [3, 8]`', '{"node":"cs","tool_calls":[{"name":"calculator","args":{"expression":"binary search tree insertion complexity"},"id":"seed_bst_2"}],"token_usage":{"input_tokens":70,"output_tokens":120,"total_tokens":190}}', NULL, 190, NULL),
 
 -- Chat 12: Sorting algorithms (Computer Science, just-solve)
-(12, 'user', 'Compare sorting algorithms', NULL, 0, NULL),
-(12, 'assistant', '| Algorithm | Best | Average | Worst | Space | Stable |\n|-----------|------|---------|-------|-------|--------|\n| Bubble | $O(n)$ | $O(n^2)$ | $O(n^2)$ | $O(1)$ | Yes |\n| Selection | $O(n^2)$ | $O(n^2)$ | $O(n^2)$ | $O(1)$ | No |\n| Insertion | $O(n)$ | $O(n^2)$ | $O(n^2)$ | $O(1)$ | Yes |\n| Merge | $O(n \\log n)$ | $O(n \\log n)$ | $O(n \\log n)$ | $O(n)$ | Yes |\n| Quick | $O(n \\log n)$ | $O(n \\log n)$ | $O(n^2)$ | $O(\\log n)$ | No |\n| Heap | $O(n \\log n)$ | $O(n \\log n)$ | $O(n \\log n)$ | $O(1)$ | No |\n\n> **Merge sort** is $O(n \\log n)$ guaranteed. **Quick sort** is faster in practice ($\\times 2$–$3\\times$) but has a worst-case $O(n^2)$.', '{"node":"cs","tool_calls":[{"name":"web_search","args":{"query":"sorting algorithms comparison time complexity"},"id":"seed_sort_1"}],"token_usage":{"input_tokens":40,"output_tokens":120,"total_tokens":160}}', 160, NULL);
+(12, 'user', 'Compare sorting algorithms', NULL, NULL, 0, NULL),
+(12, 'assistant', '| Algorithm | Best | Average | Worst | Space | Stable |\n|-----------|------|---------|-------|-------|--------|\n| Bubble | $O(n)$ | $O(n^2)$ | $O(n^2)$ | $O(1)$ | Yes |\n| Selection | $O(n^2)$ | $O(n^2)$ | $O(n^2)$ | $O(1)$ | No |\n| Insertion | $O(n)$ | $O(n^2)$ | $O(n^2)$ | $O(1)$ | Yes |\n| Merge | $O(n \\log n)$ | $O(n \\log n)$ | $O(n \\log n)$ | $O(n)$ | Yes |\n| Quick | $O(n \\log n)$ | $O(n \\log n)$ | $O(n^2)$ | $O(\\log n)$ | No |\n| Heap | $O(n \\log n)$ | $O(n \\log n)$ | $O(n \\log n)$ | $O(1)$ | No |\n\n> **Merge sort** is $O(n \\log n)$ guaranteed. **Quick sort** is faster in practice ($\\times 2$–$3\\times$) but has a worst-case $O(n^2)$.', '{"node":"cs","tool_calls":[{"name":"web_search","args":{"query":"sorting algorithms comparison time complexity"},"id":"seed_sort_1"}],"token_usage":{"input_tokens":40,"output_tokens":120,"total_tokens":160}}', NULL, 160, NULL);
 
 -- Duplicate leeyihong03's data for leeshihau (user_id=4)
 INSERT INTO subjects (id, user_id, name, created_at) VALUES
@@ -163,11 +179,11 @@ INSERT INTO chats (id, subject_id, user_id, title, total_tokens, input_tokens, o
     (19, 11, 4, 'Binary trees', 390, 160, 230, (SELECT created_at FROM chats WHERE id=11), (SELECT updated_at FROM chats WHERE id=11)),
     (20, 11, 4, 'Sorting algorithms', 210, 90, 120, (SELECT created_at FROM chats WHERE id=12), (SELECT updated_at FROM chats WHERE id=12));
 
-INSERT INTO messages (chat_id, role, content, metadata_json, token_count, quote, created_at)
+INSERT INTO messages (chat_id, role, content, metadata_json, drawing_json, token_count, quote, created_at)
 SELECT
   CASE chat_id
     WHEN 5 THEN 13 WHEN 6 THEN 14 WHEN 7 THEN 15 WHEN 8 THEN 16
     WHEN 9 THEN 17 WHEN 10 THEN 18 WHEN 11 THEN 19 WHEN 12 THEN 20
   END,
-  role, content, metadata_json, token_count, quote, created_at
+  role, content, metadata_json, drawing_json, token_count, quote, created_at
 FROM messages WHERE chat_id IN (5,6,7,8,9,10,11,12);

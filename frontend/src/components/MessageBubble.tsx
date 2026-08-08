@@ -168,6 +168,14 @@ export default function MessageBubble({
                   rehypePlugins={[rehypeRaw, rehypeKatex]}
                   components={{
                     code({ className, children, ...props }) {
+                      const isBlock = String(children).includes("\n") || Boolean(className);
+                      if (!isBlock) {
+                        return (
+                          <code className={className} {...props}>
+                            {children}
+                          </code>
+                        );
+                      }
                       return (
                         <CodeBlock className={className} {...props}>
                           {children}

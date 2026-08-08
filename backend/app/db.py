@@ -68,6 +68,7 @@ MAIN_SCHEMA_SQL = """
         image_base64 TEXT,
         image_media_type TEXT,
         metadata_json TEXT,
+        drawing_json TEXT,
         quote TEXT,
         token_count INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -123,7 +124,7 @@ def _row_to_message(row) -> Message:
     return Message(
         id=row["id"], chat_id=row["chat_id"], role=row["role"], content=row["content"],
         image_base64=row["image_base64"], image_media_type=row["image_media_type"],
-        metadata_json=row["metadata_json"], quote=row["quote"],
+        metadata_json=row["metadata_json"], drawing_json=row["drawing_json"], quote=row["quote"],
         token_count=row["token_count"],
         created_at=_parse_dt(row["created_at"]),
     )
@@ -304,15 +305,15 @@ def delete_chat(chat_id: int) -> bool:
 # --- Message operations ---
 
 
-def save_message(chat_id: int, role: str, content: str, image_base64: Optional[str] = None, image_media_type: Optional[str] = None, metadata_json: Optional[str] = None, quote: Optional[str] = None, token_count: int = 0) -> Message:
+def save_message(chat_id: int, role: str, content: str, image_base64: Optional[str] = None, image_media_type: Optional[str] = None, metadata_json: Optional[str] = None, drawing_json: Optional[str] = None, quote: Optional[str] = None, token_count: int = 0) -> Message:
     with get_conn() as conn:
         now = datetime.now(timezone.utc).isoformat()
         cur = conn.execute(
-            "INSERT INTO messages (chat_id, role, content, image_base64, image_media_type, metadata_json, quote, token_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (chat_id, role, content, image_base64, image_media_type, metadata_json, quote, token_count, now),
+            "INSERT INTO messages (chat_id, role, content, image_base64, image_media_type, metadata_json, drawing_json, quote, token_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (chat_id, role, content, image_base64, image_media_type, metadata_json, drawing_json, quote, token_count, now),
         )
         assert cur.lastrowid is not None
-        return Message(id=cur.lastrowid, chat_id=chat_id, role=role, content=content, image_base64=image_base64, image_media_type=image_media_type, metadata_json=metadata_json, quote=quote, token_count=token_count, created_at=_parse_dt(now))
+        return Message(id=cur.lastrowid, chat_id=chat_id, role=role, content=content, image_base64=image_base64, image_media_type=image_media_type, metadata_json=metadata_json, drawing_json=drawing_json, quote=quote, token_count=token_count, created_at=_parse_dt(now))
     
 def get_messages(chat_id: int, conn: sqlite3.Connection | None = None) -> list[Message]:
     with _conn_ctx(conn) as c:

@@ -242,6 +242,21 @@ async def test_whiteboard_create_diagram_emits_drawing_event(client, chat):
     done_events = [e for e in events if e["type"] == "done"]
     assert len(done_events) == 1
 
+    # --- 5. drawing elements persisted in drawing_json column (survives refresh) ---
+    with get_conn() as conn:
+        msgs = conn.execute(
+            "SELECT role, content, metadata_json, drawing_json FROM messages WHERE chat_id = ? ORDER BY created_at",
+            (chat_id,),
+        ).fetchall()
+
+    assert len(msgs) == 2
+    persisted = json.loads(msgs[1]["drawing_json"]) if msgs[1]["drawing_json"] else None
+    assert isinstance(persisted, list) and len(persisted) >= 2, f"Expected persisted drawing, got {persisted!r}"
+    assert sum(1 for e in persisted if e["type"] == "rect") == 2
+    assert sum(1 for e in persisted if e["type"] == "arrow") == 1
+    meta = json.loads(msgs[1]["metadata_json"])
+    assert "drawing" not in meta, f"drawing should not live in metadata_json: {meta}"
+
 
 async def test_duplicate_tool_call_prevention(client, chat):
     """UAT: LLM keeps calling the same tool+args → dedup prevents infinite loop.

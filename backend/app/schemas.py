@@ -148,6 +148,7 @@ class Message(BaseModel):
     image_base64: Optional[str] = None
     image_media_type: Optional[str] = None
     metadata_json: Optional[str] = None
+    drawing_json: Optional[str] = None
     quote: Optional[str] = None
     token_count: int = 0
     created_at: datetime

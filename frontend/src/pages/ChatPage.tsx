@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { sendChatStream, getSubjects, getChats, getMessages, type ChatMessage, type TokenUsage, getUsageFromMetadata, getToolCallsFromMetadata, type ChatSummary, type ToolCallInfo } from "@/lib/api";
+import { sendChatStream, getSubjects, getChats, getMessages, type ChatMessage, type TokenUsage, getUsageFromMetadata, getToolCallsFromMetadata, getDrawingFromDrawing, type ChatSummary, type ToolCallInfo } from "@/lib/api";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import ChatHeader from "@/components/ChatHeader";
@@ -53,17 +53,22 @@ export default function ChatPage() {
     setSelectedChatId(chatId);
     try {
       const msgs = await getMessages(chatId);
-      const formatted: ChatMessage[] = msgs.map((m) => ({
-        id: m.id,
-        role: m.role as "user" | "assistant",
-        content: m.content,
-        image: m.image_base64 || undefined,
-        imageMediaType: m.image_media_type || undefined,
-        quote: m.quote,
-        usage: getUsageFromMetadata(m.metadata_json),
-        tokenCount: m.token_count || undefined,
-        toolCalls: getToolCallsFromMetadata(m.metadata_json),
-      }));
+      const formatted: ChatMessage[] = msgs.map((m) => {
+        const drawing = getDrawingFromDrawing(m.drawing_json);
+        const drawingEls = drawing?.elements as WhiteboardElement[] | undefined;
+        const image = m.image_base64 || (drawingEls ? renderElementsToDataURL(drawingEls)?.split(",")[1] : undefined);
+        return {
+          id: m.id,
+          role: m.role as "user" | "assistant",
+          content: m.content,
+          image,
+          imageMediaType: m.image_base64 ? m.image_media_type : drawingEls ? "image/png" : undefined,
+          quote: m.quote,
+          usage: getUsageFromMetadata(m.metadata_json),
+          tokenCount: m.token_count || undefined,
+          toolCalls: getToolCallsFromMetadata(m.metadata_json),
+        };
+      });
       setMessages(formatted);
     } catch (e) {
       console.error("Failed to load messages", e);

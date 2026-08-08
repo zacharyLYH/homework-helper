@@ -191,6 +191,7 @@ export interface Message {
   image_base64?: string;
   image_media_type?: string;
   metadata_json?: string;
+  drawing_json?: string;
   quote?: string;
   token_count: number;
   created_at: string;
@@ -214,6 +215,16 @@ export function getUsageFromMetadata(metadata_json?: string): TokenUsage | undef
   try {
     const metadata = JSON.parse(metadata_json);
     return metadata.usage || metadata.token_usage || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function getDrawingFromDrawing(json?: string): { elements: unknown[] } | undefined {
+  if (!json) return undefined;
+  try {
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? { elements: parsed } : undefined;
   } catch {
     return undefined;
   }
