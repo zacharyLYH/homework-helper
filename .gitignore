@@ -23,6 +23,8 @@ backend/.env*
 # Node
 node_modules/
 frontend/dist/
+test-results/
+playwright-report/
 
 # IDE
 .vscode/

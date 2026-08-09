@@ -90,14 +90,35 @@ export interface ChatStreamOptions {
   onDrawing?: (elements: WhiteboardElement[]) => void;
 }
 
+// Wire contract posted to /api/chat/stream.
+export interface ChatStreamRequest {
+  message: string;
+  chat_id?: number;
+  image?: string;
+  image_media_type?: string;
+  is_diagram?: boolean;
+  quote?: string;
+  messages?: { role: ChatMessage["role"]; content: string }[];
+}
+
 export function sendChatStream(options: ChatStreamOptions): AbortController {
   const { message, chatId, image, imageMediaType, isDiagram, messages, quote, onToken, onDone, onError, onTitle, onToolCall, onDrawing } = options;
   const controller = new AbortController();
 
+  const request: ChatStreamRequest = {
+    message,
+    chat_id: chatId,
+    image,
+    image_media_type: imageMediaType,
+    is_diagram: isDiagram,
+    quote,
+    messages: messages?.map((m) => ({ role: m.role, content: m.content })),
+  };
+
   fetch(`${API_BASE}/chat/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, chat_id: chatId, image, image_media_type: imageMediaType, is_diagram: isDiagram, quote, messages: messages?.map(m => ({ role: m.role, content: m.content })) }),
+    body: JSON.stringify(request),
     credentials: "include",
     signal: controller.signal,
   })
