@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "playwright:test": "playwright test",
     "playwright:behavioral": "playwright test tests/behavioral",
-    "playwright:performance": "playwright test tests/performance tests/memory",
+    "playwright:performance": "playwright test tests/performance",
     "playwright:visual": "playwright test tests/visual",
     "playwright:update": "playwright test --update-snapshots",
     "playwright:ui": "playwright test --ui"
