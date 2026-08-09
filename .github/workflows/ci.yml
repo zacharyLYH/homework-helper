@@ -122,9 +122,17 @@ jobs:
         working-directory: frontend
         run: npx playwright install --with-deps chromium
 
-      - name: Run E2E tests
+      - name: Run behavioral E2E tests
         working-directory: frontend
-        run: npm run test:e2e:behavioral
+        run: npm run playwright:behavioral
+
+      - name: Run performance E2E tests
+        working-directory: frontend
+        run: npm run playwright:performance
+
+      - name: Run visual E2E tests
+        working-directory: frontend
+        run: npm run playwright:visual
 
   docker-build:
     name: Docker Build

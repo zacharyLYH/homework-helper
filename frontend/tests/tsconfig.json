@@ -10,5 +10,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["."]
+  "include": [".", "../playwright.config.ts"]
 }

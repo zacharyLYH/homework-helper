@@ -8,10 +8,12 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:e2e": "playwright test",
-    "test:e2e:behavioral": "playwright test tests/behavioral tests/performance tests/memory",
-    "test:e2e:update": "playwright test --update-snapshots",
-    "test:e2e:ui": "playwright test --ui"
+    "playwright:test": "playwright test",
+    "playwright:behavioral": "playwright test tests/behavioral",
+    "playwright:performance": "playwright test tests/performance tests/memory",
+    "playwright:visual": "playwright test tests/visual",
+    "playwright:update": "playwright test --update-snapshots",
+    "playwright:ui": "playwright test --ui"
   },
   "dependencies": {
     "@shadcn/react": "^0.2.1",

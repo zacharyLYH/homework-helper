@@ -10,11 +10,15 @@ import { initMockBackend, DEFAULT_STREAM } from "./helpers/stream";
 // there is one source of truth and nothing to keep in sync.
 // Per-test `stubStream`/`captureStream` swap the streamed reply mid-page.
 type AuthMode = "authenticated" | "none";
+type ThemeMode = "light" | "dark";
 
-export const test = base.extend<{ auth: AuthMode }>({
+export const test = base.extend<{ auth: AuthMode; theme: ThemeMode }>({
   auth: ["authenticated", { option: true }],
-  page: async ({ page, auth }, use) => {
+  theme: ["dark", { option: true }],
+  page: async ({ page, auth, theme }, use) => {
     await initMockBackend(page, { auth: auth === "authenticated", defaultSpec: DEFAULT_STREAM });
+    // Pins the app theme (the app defaults to "dark" without this).
+    await page.addInitScript((t) => localStorage.setItem("vite-ui-theme", t), theme);
     await use(page);
   },
 });
