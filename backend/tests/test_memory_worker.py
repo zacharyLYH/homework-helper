@@ -53,15 +53,13 @@ def test_memory_worker_processes_pending_jobs(tmp_path, monkeypatch) -> None:
 
         version = conn.execute(
             """
-            SELECT mv.version, mv.summary
-            FROM memory_current mc
-            JOIN memory_versions mv ON mv.id = mc.version_id
-            WHERE mc.user_id = ? AND mc.subject_id = ?
+            SELECT summary
+            FROM memory_summary
+            WHERE user_id = ? AND subject_id = ?
             """,
             (11, 7),
         ).fetchone()
         assert version is not None
-        assert version["version"] == 1
         assert "Recent learner observations" in version["summary"]
 
     context = load_memory_context(user_id=11, subject_id=7)

@@ -4,13 +4,11 @@ from pathlib import Path
 
 REQUIRED_MEMORY_TABLES: tuple[str, ...] = (
     "concepts",
-    "concept_aliases",
     "concept_edges",
     "learner_observations",
     "learner_concept_state",
     "learner_traits",
-    "memory_versions",
-    "memory_current",
+    "memory_summary",
     "memory_update_jobs",
     "retrieval_traces",
 )

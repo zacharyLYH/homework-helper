@@ -29,8 +29,8 @@ def test_memory_db_crud_smoke(tmp_path) -> None:
 
     with memory_db.get_conn(memory_db_path) as conn:
         concept_cur = conn.execute(
-            "INSERT INTO concepts (concept_key, display_name) VALUES (?, ?)",
-            ("quadratic_formula", "Quadratic Formula"),
+            "INSERT INTO concepts (subject_id, concept_key, display_name) VALUES (?, ?, ?)",
+            (1, "quadratic_formula", "Quadratic Formula"),
         )
         concept_id = concept_cur.lastrowid
         assert concept_id is not None

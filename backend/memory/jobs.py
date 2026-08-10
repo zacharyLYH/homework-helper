@@ -144,59 +144,17 @@ def _set_job_failed(job_id: int, *, payload_json: str | None, error: str) -> Non
         )
 
 
-def _create_memory_version(*, user_id: int, subject_id: int, summary: str) -> int:
-	version_id_int = 0
+def _upsert_memory_summary(*, user_id: int, subject_id: int, summary: str) -> None:
 	with get_conn() as conn:
-		version_row = conn.execute(
+		conn.execute(
 			"""
-			SELECT COALESCE(MAX(version), 0) + 1 AS next_version
-			FROM memory_versions
-			WHERE user_id = ? AND subject_id = ?
+			INSERT INTO memory_summary (user_id, subject_id, summary, updated_at)
+			VALUES (?, ?, ?, datetime('now'))
+			ON CONFLICT(user_id, subject_id) DO UPDATE
+			  SET summary = excluded.summary, updated_at = excluded.updated_at
 			""",
-			(user_id, subject_id),
-		).fetchone()
-		next_version = int(version_row["next_version"]) if version_row else 1
-
-		cur = conn.execute(
-			"""
-			INSERT INTO memory_versions (user_id, subject_id, version, summary)
-			VALUES (?, ?, ?, ?)
-			""",
-			(user_id, subject_id, next_version, summary),
+			(user_id, subject_id, summary),
 		)
-		version_id = cur.lastrowid
-		if version_id is None:
-			raise RuntimeError("Failed to create memory version")
-		version_id_int = int(version_id)
-
-		existing = conn.execute(
-			"""
-			SELECT id FROM memory_current
-			WHERE user_id = ? AND subject_id = ?
-			LIMIT 1
-			""",
-			(user_id, subject_id),
-		).fetchone()
-
-		if existing is None:
-			conn.execute(
-				"""
-				INSERT INTO memory_current (user_id, subject_id, version_id, updated_at)
-				VALUES (?, ?, ?, datetime('now'))
-				""",
-				(user_id, subject_id, version_id_int),
-			)
-		else:
-			conn.execute(
-				"""
-				UPDATE memory_current
-				SET version_id = ?, updated_at = datetime('now')
-				WHERE id = ?
-				""",
-				(version_id_int, int(existing["id"])),
-			)
-
-	return version_id_int
 
 
 def _process_claimed_job(job: dict) -> None:
@@ -227,7 +185,7 @@ def _process_claimed_job(job: dict) -> None:
         user_id=int(job["user_id"]),
         subject_id=int(job["subject_id"]),
     )
-    _create_memory_version(
+    _upsert_memory_summary(
         user_id=int(job["user_id"]),
         subject_id=int(job["subject_id"]),
         summary=summary,

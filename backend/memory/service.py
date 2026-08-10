@@ -74,10 +74,9 @@ def load_memory_context(*, user_id: int, subject_id: int) -> str:
     with get_conn() as conn:
         current = conn.execute(
             """
-            SELECT mv.summary
-            FROM memory_current mc
-            JOIN memory_versions mv ON mv.id = mc.version_id
-            WHERE mc.user_id = ? AND mc.subject_id = ?
+            SELECT summary
+            FROM memory_summary
+            WHERE user_id = ? AND subject_id = ?
             LIMIT 1
             """,
             (user_id, subject_id),
