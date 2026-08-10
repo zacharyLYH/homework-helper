@@ -1,14 +1,22 @@
 from langchain_core.messages import AIMessage, HumanMessage
 
 from app.graph import memory_loader, memory_updater, route_after_agent
+from memory.schemas import MemoryContext, EnqueueDecision
 
 
 def test_memory_loader_skips_when_disabled(monkeypatch):
     called = {"count": 0}
 
-    def _fake_loader(*, user_id: int, subject_id: int) -> str:
+    def _fake_loader(*, user_id: int, subject_id: int) -> MemoryContext:
         called["count"] += 1
-        return "memory summary"
+        return MemoryContext(
+            summary="memory summary",
+            traits={},
+            weak_concepts=[],
+            prerequisites=[],
+            recent_observations=[],
+            rendered="memory summary",
+        )
 
     monkeypatch.setattr("app.graph.load_memory_context", _fake_loader)
 
@@ -34,11 +42,18 @@ def test_memory_loader_skips_when_disabled(monkeypatch):
 def test_memory_loader_loads_when_enabled(monkeypatch):
     called = {"count": 0}
 
-    def _fake_loader(*, user_id: int, subject_id: int) -> str:
+    def _fake_loader(*, user_id: int, subject_id: int) -> MemoryContext:
         called["count"] += 1
         assert user_id == 22
         assert subject_id == 7
-        return "memory summary"
+        return MemoryContext(
+            summary="memory summary",
+            traits={},
+            weak_concepts=[],
+            prerequisites=[],
+            recent_observations=[],
+            rendered="memory summary",
+        )
 
     monkeypatch.setattr("app.graph.load_memory_context", _fake_loader)
 
@@ -67,7 +82,7 @@ def test_memory_updater_noop_when_disabled(monkeypatch):
 
     def _fake_enqueue(**kwargs):
         called["count"] += 1
-        return 1
+        return EnqueueDecision(enqueued=True, job_id=1, reason="enqueued")
 
     monkeypatch.setattr("app.graph.enqueue_memory_update", _fake_enqueue)
 

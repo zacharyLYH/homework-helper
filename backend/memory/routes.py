@@ -43,8 +43,8 @@ async def get_memory_context(
     return {
         "subject_id": subject_id,
         "user_id": user.id,
-        "memory_context": context,
-        "memory_loaded": bool(context),
+        "memory_context": context.rendered,
+        "memory_loaded": not context.is_empty,
     }
 
 

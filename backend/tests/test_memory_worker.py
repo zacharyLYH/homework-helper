@@ -10,7 +10,7 @@ def test_memory_worker_processes_pending_jobs(tmp_path, monkeypatch) -> None:
     memory_db.init_db(memory_db_path)
     monkeypatch.setattr("memory.config.DEFAULT_MEMORY_DB_PATH", memory_db_path)
 
-    job_id = enqueue_memory_update(
+    decision = enqueue_memory_update(
         user_id=11,
         subject_id=7,
         chat_id=99,
@@ -22,6 +22,8 @@ def test_memory_worker_processes_pending_jobs(tmp_path, monkeypatch) -> None:
             ],
         },
     )
+    job_id = decision.job_id
+    assert decision.enqueued
 
     result = process_pending_jobs(batch_size=5)
 
@@ -63,7 +65,7 @@ def test_memory_worker_processes_pending_jobs(tmp_path, monkeypatch) -> None:
         assert "Recent learner observations" in version["summary"]
 
     context = load_memory_context(user_id=11, subject_id=7)
-    assert "Recent learner observations" in context
+    assert "Recent learner observations" in context.rendered
 
 
 def test_memory_worker_failure_is_isolated_from_next_jobs(tmp_path, monkeypatch) -> None:
@@ -80,15 +82,17 @@ def test_memory_worker_failure_is_isolated_from_next_jobs(tmp_path, monkeypatch)
             (1, 1, None, "{not-valid-json"),
         )
 
-    good_job_id = enqueue_memory_update(
+    decision = enqueue_memory_update(
         user_id=1,
-        subject_id=1,
+        subject_id=2,
         chat_id=None,
         payload={
             "trigger": "chat_turn",
             "messages": [{"role": "user", "content": "I understand factoring now"}],
         },
     )
+    good_job_id = decision.job_id
+    assert decision.enqueued
 
     result = process_pending_jobs(batch_size=10)
 

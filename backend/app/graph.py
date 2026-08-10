@@ -111,17 +111,17 @@ def memory_loader(state: GraphState) -> dict:
 
     log.info(
         "Memory loader completed: loaded=%s context_chars=%d",
-        bool(context),
-        len(context),
+        not context.is_empty,
+        len(context.rendered),
     )
 
     structured_log(
         "memory_loader_done",
-        has_context=bool(context),
+        has_context=not context.is_empty,
         user_id=user_id,
         subject_id=subject_id,
     )
-    return {"memory_context": context, "memory_loaded": bool(context)}
+    return {"memory_context": context.rendered, "memory_loaded": not context.is_empty}
 
 
 def memory_updater(state: GraphState) -> dict:
@@ -158,7 +158,7 @@ def memory_updater(state: GraphState) -> dict:
     }
 
     try:
-        job_id = enqueue_memory_update(
+        decision = enqueue_memory_update(
             user_id=user_id,
             subject_id=subject_id,
             chat_id=None,
@@ -169,11 +169,13 @@ def memory_updater(state: GraphState) -> dict:
         structured_log("memory_updater_error", error=str(exc))
         return {}
 
-    log.info("Memory updater enqueued job: job_id=%s", job_id)
+    log.info("Memory updater outcome: enqueued=%s reason=%s job_id=%s", decision.enqueued, decision.reason, decision.job_id)
 
     structured_log(
-        "memory_updater_enqueued",
-        job_id=job_id,
+        "memory_updater_done",
+        enqueued=decision.enqueued,
+        reason=decision.reason,
+        job_id=decision.job_id,
         user_id=user_id,
         subject_id=subject_id,
     )
