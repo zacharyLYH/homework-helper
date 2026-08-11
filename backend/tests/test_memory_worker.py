@@ -1,8 +1,23 @@
 import json
+from unittest.mock import AsyncMock, patch
 
 from memory import db as memory_db
 from memory.jobs import process_pending_jobs
+from memory.schemas import MemoryEvaluation, ConceptUpsert, ConceptEdgeUpsert, ConceptStateDelta
 from memory.service import enqueue_memory_update, load_memory_context
+
+
+def _make_evaluation(**overrides) -> MemoryEvaluation:
+    defaults = dict(
+        skip=False,
+        observations=["Learner struggles with sign flipping in quadratic formula"],
+        concept_upserts=[ConceptUpsert(concept_key="quadratic_formula", display_name="Quadratic Formula", aliases=[])],
+        concept_edges=[],
+        concept_state_deltas=[ConceptStateDelta(concept_key="quadratic_formula", mastery=0.3, confidence=0.8)],
+        trait_updates={},
+        updated_summary="Learner has difficulty with sign tracking in the quadratic formula.",
+    )
+    return MemoryEvaluation(**{**defaults, **overrides})
 
 
 def test_memory_worker_processes_pending_jobs(tmp_path, monkeypatch) -> None:
@@ -25,7 +40,10 @@ def test_memory_worker_processes_pending_jobs(tmp_path, monkeypatch) -> None:
     job_id = decision.job_id
     assert decision.enqueued
 
-    result = process_pending_jobs(batch_size=5)
+    mock_eval = _make_evaluation()
+
+    with patch("memory.jobs.evaluate_memory", new=AsyncMock(return_value=mock_eval)):
+        result = process_pending_jobs(batch_size=5)
 
     assert result.claimed == 1
     assert result.done == 1
@@ -51,7 +69,7 @@ def test_memory_worker_processes_pending_jobs(tmp_path, monkeypatch) -> None:
         ).fetchone()
         assert obs is not None
         assert obs["source"] == "memory_worker"
-        assert "Learner said" in obs["observation"]
+        assert obs["observation"] == "Learner struggles with sign flipping in quadratic formula"
 
         version = conn.execute(
             """
@@ -62,10 +80,64 @@ def test_memory_worker_processes_pending_jobs(tmp_path, monkeypatch) -> None:
             (11, 7),
         ).fetchone()
         assert version is not None
-        assert "Recent learner observations" in version["summary"]
+        assert version["summary"] == "Learner has difficulty with sign tracking in the quadratic formula."
+
+        concept = conn.execute(
+            "SELECT id FROM concepts WHERE subject_id = ? AND concept_key = ?",
+            (7, "quadratic_formula"),
+        ).fetchone()
+        assert concept is not None
+
+        state = conn.execute(
+            "SELECT mastery, confidence FROM learner_concept_state WHERE user_id = ? AND concept_id = ?",
+            (11, concept["id"]),
+        ).fetchone()
+        assert state is not None
+        assert abs(state["mastery"] - 0.3) < 0.001
 
     context = load_memory_context(user_id=11, subject_id=7)
-    assert "Recent learner observations" in context.rendered
+    assert "quadratic" in context.rendered.lower()
+
+
+def test_memory_worker_skip_does_not_write(tmp_path, monkeypatch) -> None:
+    memory_db_path = tmp_path / "memory.db"
+    memory_db.init_db(memory_db_path)
+    monkeypatch.setattr("memory.config.DEFAULT_MEMORY_DB_PATH", memory_db_path)
+
+    decision = enqueue_memory_update(
+        user_id=5,
+        subject_id=3,
+        chat_id=None,
+        payload={
+            "trigger": "chat_turn",
+            "messages": [{"role": "user", "content": "ok thanks, I think I understand the concept now"}],
+        },
+    )
+    assert decision.enqueued
+
+    mock_eval = _make_evaluation(
+        skip=True,
+        observations=[],
+        concept_upserts=[],
+        concept_edges=[],
+        concept_state_deltas=[],
+        trait_updates={},
+        updated_summary="",
+    )
+
+    with patch("memory.jobs.evaluate_memory", new=AsyncMock(return_value=mock_eval)):
+        result = process_pending_jobs(batch_size=5)
+
+    assert result.claimed == 1
+    assert result.done == 1
+    assert result.failed == 0
+
+    with memory_db.get_conn(memory_db_path) as conn:
+        obs_count = conn.execute(
+            "SELECT COUNT(*) as n FROM learner_observations WHERE user_id = ? AND subject_id = ?",
+            (5, 3),
+        ).fetchone()["n"]
+        assert obs_count == 0
 
 
 def test_memory_worker_failure_is_isolated_from_next_jobs(tmp_path, monkeypatch) -> None:
@@ -94,7 +166,15 @@ def test_memory_worker_failure_is_isolated_from_next_jobs(tmp_path, monkeypatch)
     good_job_id = decision.job_id
     assert decision.enqueued
 
-    result = process_pending_jobs(batch_size=10)
+    mock_eval = _make_evaluation(
+        observations=["Learner understands factoring"],
+        concept_upserts=[],
+        concept_state_deltas=[],
+        updated_summary="Learner understands factoring.",
+    )
+
+    with patch("memory.jobs.evaluate_memory", new=AsyncMock(return_value=mock_eval)):
+        result = process_pending_jobs(batch_size=10)
 
     assert result.claimed == 2
     assert result.done == 1
@@ -112,3 +192,34 @@ def test_memory_worker_failure_is_isolated_from_next_jobs(tmp_path, monkeypatch)
 
     assert rows[1]["id"] == good_job_id
     assert rows[1]["status"] == "done"
+
+
+def test_memory_worker_llm_error_marks_job_failed(tmp_path, monkeypatch) -> None:
+    memory_db_path = tmp_path / "memory.db"
+    memory_db.init_db(memory_db_path)
+    monkeypatch.setattr("memory.config.DEFAULT_MEMORY_DB_PATH", memory_db_path)
+
+    decision = enqueue_memory_update(
+        user_id=2,
+        subject_id=4,
+        chat_id=None,
+        payload={"trigger": "chat_turn", "messages": [{"role": "user", "content": "can you help me understand integration by parts?"}]},
+    )
+    assert decision.enqueued
+    job_id = decision.job_id
+
+    with patch("memory.jobs.evaluate_memory", new=AsyncMock(side_effect=RuntimeError("LLM timeout"))):
+        result = process_pending_jobs(batch_size=5)
+
+    assert result.claimed == 1
+    assert result.done == 0
+    assert result.failed == 1
+
+    with memory_db.get_conn(memory_db_path) as conn:
+        row = conn.execute(
+            "SELECT status, payload_json FROM memory_update_jobs WHERE id = ?",
+            (job_id,),
+        ).fetchone()
+        assert row["status"] == "failed"
+        payload = json.loads(row["payload_json"])
+        assert "LLM timeout" in payload["worker_error"]

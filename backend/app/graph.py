@@ -140,15 +140,22 @@ def memory_updater(state: GraphState) -> dict:
     log.info("Memory updater started: user_id=%s subject_id=%s", user_id, subject_id)
 
     messages = state.get("messages", [])
-    snippet: list[dict[str, str]] = []
-    for msg in messages[-4:]:
+    # Walk back to find the last non-empty human and ai messages (streaming leaves empty tail chunks)
+    last_by_role: dict[str, str] = {}
+    for msg in reversed(messages):
         role = getattr(msg, "type", "unknown")
-        snippet.append(
-            {
-                "role": role,
-                "content": _stringify_content(getattr(msg, "content", ""))[:1000],
-            }
-        )
+        if role not in last_by_role:
+            content = _stringify_content(getattr(msg, "content", ""))
+            if content.strip():
+                last_by_role[role] = content
+        if "human" in last_by_role and "ai" in last_by_role:
+            break
+
+    snippet: list[dict[str, str]] = [
+        {"role": role, "content": last_by_role[role][:400]}
+        for role in ("human", "ai")
+        if role in last_by_role
+    ]
 
     payload = {
         "trigger": "chat_turn",

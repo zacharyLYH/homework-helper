@@ -25,6 +25,13 @@ MEMORY_WEAK_MASTERY_THRESHOLD: float = float(os.getenv("MEMORY_WEAK_MASTERY_THRE
 MEMORY_WEAK_CONCEPTS_LIMIT: int = int(os.getenv("MEMORY_WEAK_CONCEPTS_LIMIT", "5"))
 MEMORY_RECENT_OBS_LIMIT: int = int(os.getenv("MEMORY_RECENT_OBS_LIMIT", "3"))
 
+# LLM evaluation config
+MEMORY_LLM_MODEL: str = os.getenv("MEMORY_LLM_MODEL", "openrouter/free")
+MEMORY_LLM_TIMEOUT_SECONDS: float = float(os.getenv("MEMORY_LLM_TIMEOUT_SECONDS", "90"))
+MEMORY_LLM_MAX_OBSERVATIONS: int = int(os.getenv("MEMORY_LLM_MAX_OBSERVATIONS", "5"))
+MEMORY_LLM_MAX_CONCEPTS: int = int(os.getenv("MEMORY_LLM_MAX_CONCEPTS", "10"))
+MEMORY_LLM_MAX_SUMMARY_CHARS: int = int(os.getenv("MEMORY_LLM_MAX_SUMMARY_CHARS", "500"))
+
 
 def resolve_memory_db_path() -> Path:
     configured_path = os.getenv("MEMORY_DATABASE_PATH", "").strip()

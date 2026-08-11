@@ -520,7 +520,7 @@ def _extract_user_text(payload: dict) -> str:
     user_messages = [
         msg.get("content", "")
         for msg in messages
-        if isinstance(msg, dict) and msg.get("role") == "user"
+        if isinstance(msg, dict) and msg.get("role") in ("user", "human")
     ]
     
     text_parts = [str(msg).strip() for msg in user_messages if msg]
