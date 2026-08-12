@@ -4,7 +4,7 @@ from app.auth import get_current_user
 from app.db import get_subject
 from app.schemas import User
 from memory.db import get_conn
-from memory.service import load_memory_context
+from memory.service.main import load_memory_context
 
 
 router = APIRouter(tags=["memory"])

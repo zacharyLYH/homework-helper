@@ -1,18 +1,10 @@
-"""Memory job orchestration — LLM-evaluated worker.
-
-The worker claims pending jobs from ``memory_update_jobs``, calls the LLM to
-evaluate the turn, then atomically writes concept/state/trait/summary updates.
-Jobs are marked ``done`` or ``failed``; the worker never raises to callers.
-"""
+"""Helper functions for memory worker orchestration and DB writes."""
 
 from __future__ import annotations
 
-import argparse
-import asyncio
 import json
 import re
-import time
-from dataclasses import dataclass
+from typing import Any
 
 from app.logging import get_logger
 from app.structured_log import structured_log
@@ -24,26 +16,10 @@ from memory.config import (
     MEMORY_WEAK_MASTERY_THRESHOLD,
 )
 from memory.db import get_conn
-from memory.db import init_db
-from memory.llm import evaluate_memory
-from memory.schemas import (
-    MemoryEvaluation,
-    MemoryEvaluationInput,
-)
+from memory.schemas import MemoryEvaluation
+from memory.schemas import MemoryEvaluationInput
 
 log = get_logger(__name__)
-
-
-@dataclass(frozen=True)
-class WorkerBatchResult:
-    claimed: int
-    done: int
-    failed: int
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 
 def normalize_concept_key(raw: str) -> str:
@@ -84,7 +60,6 @@ def _load_current_state(user_id: int, subject_id: int, payload: dict) -> MemoryE
             "SELECT traits_json FROM learner_traits WHERE user_id = ? AND subject_id = ?",
             (user_id, subject_id),
         ).fetchone()
-        current_traits: dict[str, str] = {}
         if traits_row:
             try:
                 parsed = json.loads(str(traits_row["traits_json"]))
@@ -185,7 +160,7 @@ def _apply_evaluation(
     tables_written: list[str] = []
 
     with get_conn() as conn:
-        # Step 1 — concept upserts; build key→id map
+        # Step 1 - concept upserts; build key->id map
         key_to_id: dict[str, int] = {}
         for cu in evaluation.concept_upserts:
             nkey = normalize_concept_key(cu.concept_key)
@@ -225,7 +200,7 @@ def _apply_evaluation(
         if evaluation.concept_upserts:
             tables_written.append("concepts")
 
-        # Step 2 — edges
+        # Step 2 - edges
         for edge in evaluation.concept_edges:
             from_nkey = normalize_concept_key(edge.from_concept_key)
             to_nkey = normalize_concept_key(edge.to_concept_key)
@@ -241,7 +216,7 @@ def _apply_evaluation(
             to_id = key_to_id.get(to_nkey)
             if from_id is None or to_id is None:
                 log.warning(
-                    "memory_worker: edge references unknown concept(s) %r→%r, skipping",
+                    "memory_worker: edge references unknown concept(s) %r->%r, skipping",
                     from_nkey,
                     to_nkey,
                 )
@@ -258,7 +233,7 @@ def _apply_evaluation(
         if evaluation.concept_edges:
             tables_written.append("concept_edges")
 
-        # Step 3 — observations
+        # Step 3 - observations
         for obs in evaluation.observations:
             conn.execute(
                 """
@@ -270,7 +245,7 @@ def _apply_evaluation(
         if evaluation.observations:
             tables_written.append("learner_observations")
 
-        # Step 4 — concept state
+        # Step 4 - concept state
         for delta in evaluation.concept_state_deltas:
             nkey = normalize_concept_key(delta.concept_key)
             concept_id = key_to_id.get(nkey)
@@ -300,7 +275,7 @@ def _apply_evaluation(
         if evaluation.concept_state_deltas:
             tables_written.append("learner_concept_state")
 
-        # Step 5 — traits merge
+        # Step 5 - traits merge
         if evaluation.trait_updates:
             traits_row = conn.execute(
                 "SELECT traits_json FROM learner_traits WHERE user_id = ? AND subject_id = ?",
@@ -327,7 +302,7 @@ def _apply_evaluation(
             )
             tables_written.append("learner_traits")
 
-        # Step 6 — summary
+        # Step 6 - summary
         if evaluation.updated_summary:
             conn.execute(
                 """
@@ -348,13 +323,8 @@ def _apply_evaluation(
     )
 
 
-# ---------------------------------------------------------------------------
-# Job claim / status helpers
-# ---------------------------------------------------------------------------
-
-
-def _claim_next_pending_job() -> dict | None:
-    row_data: dict | None = None
+def _claim_next_pending_job() -> dict[str, Any] | None:
+    row_data: dict[str, Any] | None = None
     with get_conn() as conn:
         row = conn.execute(
             """
@@ -404,7 +374,7 @@ def _set_job_done(job_id: int) -> None:
 
 
 def _set_job_failed(job_id: int, *, payload_json: str | None, error: str) -> None:
-    next_payload: dict = {"worker_error": error[:400]}
+    next_payload: dict[str, Any] = {"worker_error": error[:400]}
     if payload_json:
         try:
             parsed = json.loads(payload_json)
@@ -422,175 +392,3 @@ def _set_job_failed(job_id: int, *, payload_json: str | None, error: str) -> Non
             """,
             (json.dumps(next_payload), job_id),
         )
-
-
-# ---------------------------------------------------------------------------
-# Core processing
-# ---------------------------------------------------------------------------
-
-
-def _process_claimed_job(job: dict, loop: asyncio.AbstractEventLoop) -> bool:
-    """Process one claimed job. Returns True on success, False on failure.
-
-    Never raises — all errors are caught and the job is marked ``failed``.
-    """
-    job_id = int(job["id"])
-    user_id = int(job["user_id"])
-    subject_id = int(job["subject_id"])
-
-    t0 = time.monotonic()
-    structured_log("memory_worker_llm_start", job_id=job_id, user_id=user_id, subject_id=subject_id)
-
-    try:
-        payload = _parse_payload(job.get("payload_json"))
-        current_state = _load_current_state(user_id, subject_id, payload)
-
-        evaluation = loop.run_until_complete(evaluate_memory(current_state=current_state))
-        evaluation = _validate_semantic(evaluation, job_id=job_id)
-
-        latency_ms = int((time.monotonic() - t0) * 1000)
-        structured_log(
-            "memory_worker_llm_done",
-            job_id=job_id,
-            latency_ms=latency_ms,
-            skip=evaluation.skip,
-            observations_count=len(evaluation.observations),
-            concepts_count=len(evaluation.concept_upserts),
-        )
-
-        if evaluation.skip:
-            return True
-
-        _apply_evaluation(
-            user_id=user_id,
-            subject_id=subject_id,
-            evaluation=evaluation,
-            job_id=job_id,
-        )
-        return True
-
-    except Exception as exc:
-        # asyncio.TimeoutError str() is empty in Python 3.10; use repr() for clarity
-        error_msg = repr(exc) if not str(exc) else str(exc)
-        structured_log("memory_worker_llm_error", job_id=job_id, error=error_msg[:400])
-        log.warning("Memory worker failed job_id=%s error=%s", job_id, error_msg)
-        _set_job_failed(job_id, payload_json=job.get("payload_json"), error=error_msg)
-        return False
-
-
-def process_pending_jobs(
-    *,
-    batch_size: int = 20,
-    loop: asyncio.AbstractEventLoop | None = None,
-) -> WorkerBatchResult:
-    _loop = loop if loop is not None else asyncio.new_event_loop()
-    close_loop = loop is None
-
-    claimed = 0
-    done = 0
-    failed = 0
-
-    try:
-        for _ in range(max(1, batch_size)):
-            job = _claim_next_pending_job()
-            if job is None:
-                break
-
-            claimed += 1
-            job_id = int(job["id"])
-
-            try:
-                success = _process_claimed_job(job, _loop)
-            except Exception as exc:  # pragma: no cover - defensive guard
-                log.error("Unexpected error in worker job_id=%s: %s", job_id, exc)
-                _set_job_failed(job_id, payload_json=job.get("payload_json"), error=str(exc))
-                failed += 1
-                continue
-
-            if success:
-                done += 1
-                _set_job_done(job_id)
-                log.info("Memory worker completed job_id=%s", job_id)
-            else:
-                failed += 1
-    finally:
-        if close_loop:
-            _loop.close()
-
-    return WorkerBatchResult(claimed=claimed, done=done, failed=failed)
-
-
-def run_worker_loop(
-    *,
-    poll_interval_s: float,
-    batch_size: int,
-    loop: asyncio.AbstractEventLoop,
-) -> None:
-    log.info(
-        "Memory worker started: poll_interval_s=%s batch_size=%s",
-        poll_interval_s,
-        batch_size,
-    )
-    while True:
-        result = process_pending_jobs(batch_size=batch_size, loop=loop)
-        if result.claimed == 0:
-            time.sleep(max(0.1, poll_interval_s))
-
-
-def _build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run memory update worker")
-    parser.add_argument(
-        "--once",
-        action="store_true",
-        help="Process one batch and exit",
-    )
-    parser.add_argument(
-        "--poll-interval",
-        type=float,
-        default=2.0,
-        help="Seconds to wait when no pending jobs are available",
-    )
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=20,
-        help="Maximum jobs to process per batch",
-    )
-    return parser
-
-
-def main() -> int:
-    parser = _build_arg_parser()
-    args = parser.parse_args()
-
-    db_path = init_db()
-    log.info(f"Memory worker schema ready: {db_path}")
-
-    loop = asyncio.new_event_loop()
-    try:
-        if args.once:
-            result = process_pending_jobs(
-                batch_size=max(1, int(args.batch_size)),
-                loop=loop,
-            )
-            log.info(
-                "Memory worker one-shot finished: claimed=%s done=%s failed=%s",
-                result.claimed,
-                result.done,
-                result.failed,
-            )
-            return 0
-
-        run_worker_loop(
-            poll_interval_s=max(0.1, float(args.poll_interval)),
-            batch_size=max(1, int(args.batch_size)),
-            loop=loop,
-        )
-    finally:
-        loop.close()
-
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

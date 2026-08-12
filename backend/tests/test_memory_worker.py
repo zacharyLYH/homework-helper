@@ -2,9 +2,9 @@ import json
 from unittest.mock import AsyncMock, patch
 
 from memory import db as memory_db
-from memory.jobs import process_pending_jobs
+from memory.jobs.main import process_pending_jobs
 from memory.schemas import MemoryEvaluation, ConceptUpsert, ConceptEdgeUpsert, ConceptStateDelta
-from memory.service import enqueue_memory_update, load_memory_context
+from memory.service.main import enqueue_memory_update, load_memory_context
 
 
 def _make_evaluation(**overrides) -> MemoryEvaluation:
@@ -42,7 +42,7 @@ def test_memory_worker_processes_pending_jobs(tmp_path, monkeypatch) -> None:
 
     mock_eval = _make_evaluation()
 
-    with patch("memory.jobs.evaluate_memory", new=AsyncMock(return_value=mock_eval)):
+    with patch("memory.jobs.main.evaluate_memory", new=AsyncMock(return_value=mock_eval)):
         result = process_pending_jobs(batch_size=5)
 
     assert result.claimed == 1
@@ -125,7 +125,7 @@ def test_memory_worker_skip_does_not_write(tmp_path, monkeypatch) -> None:
         updated_summary="",
     )
 
-    with patch("memory.jobs.evaluate_memory", new=AsyncMock(return_value=mock_eval)):
+    with patch("memory.jobs.main.evaluate_memory", new=AsyncMock(return_value=mock_eval)):
         result = process_pending_jobs(batch_size=5)
 
     assert result.claimed == 1
@@ -144,6 +144,7 @@ def test_memory_worker_failure_is_isolated_from_next_jobs(tmp_path, monkeypatch)
     memory_db_path = tmp_path / "memory.db"
     memory_db.init_db(memory_db_path)
     monkeypatch.setattr("memory.config.DEFAULT_MEMORY_DB_PATH", memory_db_path)
+    rows = []
 
     with memory_db.get_conn(memory_db_path) as conn:
         conn.execute(
@@ -173,7 +174,7 @@ def test_memory_worker_failure_is_isolated_from_next_jobs(tmp_path, monkeypatch)
         updated_summary="Learner understands factoring.",
     )
 
-    with patch("memory.jobs.evaluate_memory", new=AsyncMock(return_value=mock_eval)):
+    with patch("memory.jobs.main.evaluate_memory", new=AsyncMock(return_value=mock_eval)):
         result = process_pending_jobs(batch_size=10)
 
     assert result.claimed == 2
@@ -208,7 +209,7 @@ def test_memory_worker_llm_error_marks_job_failed(tmp_path, monkeypatch) -> None
     assert decision.enqueued
     job_id = decision.job_id
 
-    with patch("memory.jobs.evaluate_memory", new=AsyncMock(side_effect=RuntimeError("LLM timeout"))):
+    with patch("memory.jobs.main.evaluate_memory", new=AsyncMock(side_effect=RuntimeError("LLM timeout"))):
         result = process_pending_jobs(batch_size=5)
 
     assert result.claimed == 1

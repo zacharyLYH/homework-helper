@@ -26,7 +26,7 @@ from app.llm import stream_llm
 from app.logging import get_logger, structured_log
 from app.schemas import GraphState
 from app.tools import ALL_TOOLS
-from memory.service import enqueue_memory_update, load_memory_context
+from memory.service.main import enqueue_memory_update, load_memory_context
 
 log = get_logger(__name__)
 
