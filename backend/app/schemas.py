@@ -18,6 +18,7 @@ class  GraphState(TypedDict):
     pending_tool_calls: int
     pending_tool_calls_data: list[dict]
     called_tools: list[str]
+    chat_id: int | None
     user_id: int | None
     subject_id: int | None
     memory_context: str

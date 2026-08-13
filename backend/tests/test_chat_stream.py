@@ -206,9 +206,11 @@ async def test_chat_stream_second_message(client, auth_and_chat):
 # ── alignment gate ───────────────────────────────────────────────────
 
 
-async def test_chat_stream_rejects_off_topic_message(client, auth_and_chat):
+async def test_chat_stream_rejects_off_topic_message(client, auth_and_chat, monkeypatch):
     chat_id = await auth_and_chat()
     token = _make_token()
+
+    monkeypatch.setattr("app.graph.check_alignment", lambda _text: (False, 0.01, "below_threshold"))
 
     resp = await client.post(
         "/api/chat/stream",
@@ -235,9 +237,11 @@ async def test_chat_stream_rejects_off_topic_message(client, auth_and_chat):
     assert msgs == [], "rejected bad data must not be persisted"
 
 
-async def test_chat_stream_rejection_is_structured_logged(client, auth_and_chat):
+async def test_chat_stream_rejection_is_structured_logged(client, auth_and_chat, monkeypatch):
     chat_id = await auth_and_chat()
     token = _make_token()
+
+    monkeypatch.setattr("app.graph.check_alignment", lambda _text: (False, 0.01, "below_threshold"))
 
     resp = await client.post(
         "/api/chat/stream",

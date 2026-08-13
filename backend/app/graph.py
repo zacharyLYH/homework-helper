@@ -168,7 +168,7 @@ def memory_updater(state: GraphState) -> dict:
         decision = enqueue_memory_update(
             user_id=user_id,
             subject_id=subject_id,
-            chat_id=None,
+            chat_id=state.get("chat_id"),
             payload=payload,
         )
     except Exception as exc:  # pragma: no cover - defensive guard
@@ -179,10 +179,11 @@ def memory_updater(state: GraphState) -> dict:
     log.info("Memory updater outcome: enqueued=%s reason=%s job_id=%s", decision.enqueued, decision.reason, decision.job_id)
 
     structured_log(
-        "memory_updater_done",
+        "memory_updater_outcome",
         enqueued=decision.enqueued,
         reason=decision.reason,
         job_id=decision.job_id,
+        chat_id=state.get("chat_id"),
         user_id=user_id,
         subject_id=subject_id,
     )
@@ -275,12 +276,12 @@ def alignment_check(state: GraphState) -> dict:
     }
 
 
-def route_after_alignment(state: GraphState) -> Literal["agent", "end"]:
+def route_after_alignment(state: GraphState) -> Literal["memory_loader", "end"]:
     if state.get(STATE_REJECTED_REASON, ""):
         structured_log("graph_route", destination="end", reason="alignment_rejected")
         return END_LABEL
-    structured_log("graph_route", destination="agent", reason="alignment_ok")
-    return NODE_AGENT
+    structured_log("graph_route", destination="memory_loader", reason="alignment_ok")
+    return "memory_loader"
 
 
 # --- Agent node ---
@@ -418,12 +419,12 @@ def build_graph() -> CompiledStateGraph:
     graph_builder.add_node(NODE_TOOL_EXECUTOR, tool_executor)
     graph_builder.add_node("memory_updater", memory_updater)
 
-    graph_builder.add_edge(START, "memory_loader")
-    graph_builder.add_edge("memory_loader", NODE_ALIGNMENT_CHECK)
+    graph_builder.add_edge(START, NODE_ALIGNMENT_CHECK)
     graph_builder.add_conditional_edges(NODE_ALIGNMENT_CHECK, route_after_alignment, {
-        NODE_AGENT: NODE_AGENT,
+        "memory_loader": "memory_loader",
         END_LABEL: END,
     })
+    graph_builder.add_edge("memory_loader", NODE_AGENT)
     graph_builder.add_conditional_edges("agent", route_after_agent, {
         "tool_executor": "tool_executor",
         "memory_updater": "memory_updater",
