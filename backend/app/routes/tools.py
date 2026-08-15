@@ -7,5 +7,5 @@ router = APIRouter()
 
 
 @router.get("/api/tools", response_model=list[ToolInfo])
-async def list_tools():
+async def list_tools() -> list[ToolInfo]:
     return [ToolInfo(name=t.name, description=t.description) for t in ALL_TOOLS]

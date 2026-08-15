@@ -14,6 +14,7 @@ COPY models/ ./models/
 
 COPY app/ ./app/
 COPY memory/ ./memory/
+COPY shared/ ./shared/
 
 EXPOSE 8000
 

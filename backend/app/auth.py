@@ -6,7 +6,7 @@ from fastapi import Depends, HTTPException, Request
 from app.config import settings
 from app.db import get_user_by_email
 from app.logging import get_logger
-from app.schemas import User
+from shared.schemas import User
 
 log = get_logger(__name__)
 

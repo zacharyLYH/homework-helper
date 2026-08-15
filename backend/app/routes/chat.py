@@ -24,7 +24,8 @@ from app.db import get_chat, get_messages, save_message, update_chat_title, upda
 from app.graph import compiled_graph
 from app.llmconfig import router as llm_router
 from app.logging import get_logger, structured_log
-from app.schemas import ChatRequest, User
+from app.schemas import ChatRequest
+from shared.schemas import User
 from app.structured_log import force_structured_logger, get_structured_logger
 from app.tools import WHITEBOARD_TOOL_NAMES
 
@@ -143,7 +144,7 @@ def _rejection_reply(reason: str) -> str:
 
 
 @router.post("/api/chat/stream")
-async def chat_stream(req: ChatRequest, request: Request, user: User = Depends(get_current_user)):
+async def chat_stream(req: ChatRequest, request: Request, user: User = Depends(get_current_user)) -> StreamingResponse:
     thread_id = str(uuid.uuid4())
 
     structured_log("chat_request", message=req.message, message_length=len(req.message), chat_id=req.chat_id, thread_id=thread_id, has_image=bool(req.image), is_diagram=bool(req.is_diagram))

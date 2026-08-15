@@ -8,7 +8,8 @@ from typing import Optional
 
 from app.config import settings
 from app.logging import get_logger
-from app.schemas import Chat, ChatSummary, Message, Subject, SubjectWithChats, User
+from app.schemas import Chat, ChatSummary, Message, SubjectWithChats
+from shared.schemas import Subject, User
 
 log = get_logger(__name__)
 

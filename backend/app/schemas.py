@@ -7,6 +7,7 @@ from langgraph.graph import add_messages
 from pydantic import BaseModel, ConfigDict
 from typing_extensions import Annotated, TypedDict
 
+from shared.schemas import Subject, User  # re-exported for backward compatibility
 
 # --- LangGraph State ---
 
@@ -101,24 +102,16 @@ class HealthResponse(BaseModel):
     memory_enabled: bool
 
 
+class RootResponse(BaseModel):
+    service: str
+    docs: str
+
+
+class MessageResponse(BaseModel):
+    message: str
+
+
 # --- Database Models ---
-
-
-class User(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    email: str
-    created_at: datetime
-
-
-class Subject(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    user_id: int
-    name: str
-    created_at: datetime
 
 
 class Chat(BaseModel):
@@ -189,3 +182,115 @@ class AuthVerifyResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: User
+
+
+class AuthRefreshResponse(BaseModel):
+    access_token: str
+
+
+class AuthMeResponse(BaseModel):
+    id: int
+    email: str
+
+
+# --- Settings / LLM config UI models ---
+
+
+class SettingsProvider(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    key_url: str
+
+
+class SettingsModelOption(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    provider: str
+    label: str
+    tier: str
+    recommended: str
+    supports_images: bool
+    price_in: str
+    price_out: str
+    price_note: str
+
+
+class SettingsCatalogResponse(BaseModel):
+    providers: list[SettingsProvider]
+    models: list[SettingsModelOption]
+
+
+class RoutingRuleUI(BaseModel):
+    when: str
+    use: list[str]
+
+
+class OperationConfigUI(BaseModel):
+    order: list[str] = []
+    rules: list[RoutingRuleUI] = []
+
+
+class TripletUI(BaseModel):
+    alias: str
+    provider: str
+    model: str
+    api_key: str = ""
+    has_key: bool = False
+
+
+class LLMConfigUI(BaseModel):
+    """The config as the UI exchanges it: masked api_key + has_key flag."""
+
+    version: int = 1
+    name: str = "My Config"
+    triplets: list[TripletUI] = []
+    chat: OperationConfigUI = OperationConfigUI()
+    memory: OperationConfigUI = OperationConfigUI()
+
+
+class ConfigExportResponse(BaseModel):
+    yaml: str
+
+
+class ConfigImportRequest(BaseModel):
+    yaml: str
+
+
+class PingResult(BaseModel):
+    alias: str = ""
+    provider: str = ""
+    model: str = ""
+    ok: bool = False
+    error: str | None = None
+    latency_ms: int | None = None
+    kind: str | None = None
+
+
+class ConfigTestResponse(BaseModel):
+    results: list[PingResult]
+
+
+# --- Debug / ops models ---
+
+
+class SqlQueryResponse(BaseModel):
+    columns: list[str]
+    rows: list[dict[str, Any]]
+    row_count: int
+
+
+class StructuredLogEntry(BaseModel):
+    id: int
+    type: str
+    created_at: str
+    message_id: int | None
+    log: str
+
+
+class MessageTraceEntry(Message):
+    chat_title: str | None = None
+    subject_name: str | None = None
+    user_email: str | None = None

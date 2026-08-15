@@ -18,6 +18,7 @@ from memory.config import (
 from memory.db import get_conn
 from memory.schemas import MemoryEvaluation
 from memory.schemas import MemoryEvaluationInput
+from shared.schemas import MemoryUpdatePayload
 
 log = get_logger(__name__)
 
@@ -28,16 +29,36 @@ def normalize_concept_key(raw: str) -> str:
     return replaced.strip("_")
 
 
-def _parse_payload(payload_json: str | None) -> dict:
+def _parse_payload(payload_json: str | None) -> MemoryUpdatePayload:
+    """Parse a stored job payload into the typed app<->worker contract.
+
+    Malformed/missing payloads normalize to an empty payload so downstream
+    processing never sees raw JSON. Raises on unparseable JSON so the caller
+    can mark the job failed.
+    """
     if not payload_json:
-        return {}
+        return MemoryUpdatePayload(
+            trigger="", memory_loaded=False, memory_context="", messages=[]
+        )
     parsed = json.loads(str(payload_json))
     if isinstance(parsed, dict):
-        return parsed
-    return {}
+        messages = [
+            {"role": str(m.get("role", "")), "content": str(m.get("content", ""))}
+            for m in parsed.get("messages", [])
+            if isinstance(m, dict)
+        ]
+        return MemoryUpdatePayload(
+            trigger=str(parsed.get("trigger", "")),
+            memory_loaded=bool(parsed.get("memory_loaded", False)),
+            memory_context=str(parsed.get("memory_context", "")),
+            messages=messages,
+        )
+    return MemoryUpdatePayload(
+        trigger="", memory_loaded=False, memory_context="", messages=[]
+    )
 
 
-def _load_current_state(user_id: int, subject_id: int, payload: dict) -> MemoryEvaluationInput:
+def _load_current_state(user_id: int, subject_id: int, payload: MemoryUpdatePayload) -> MemoryEvaluationInput:
     """Read current memory state from DB and combine with payload messages."""
     messages: list[dict] = [
         {"role": str(m.get("role", "")), "content": str(m.get("content", ""))}

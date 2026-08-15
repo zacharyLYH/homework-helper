@@ -12,7 +12,7 @@ from memory.config import (
     MEMORY_WEAK_CONCEPTS_LIMIT,
     MEMORY_WEAK_MASTERY_THRESHOLD,
 )
-from memory.schemas import EnqueueDecision
+from shared.schemas import EnqueueDecision, MemoryUpdatePayload
 
 
 def _load_summary(
@@ -267,7 +267,7 @@ def _do_enqueue_job(
     user_id: int,
     subject_id: int,
     chat_id: int | None,
-    payload: dict,
+    payload: MemoryUpdatePayload,
 ) -> EnqueueDecision:
     """Insert the job and return enqueue decision."""
     cur = conn.execute(
@@ -295,7 +295,7 @@ def _do_enqueue_job(
     return decision
 
 
-def _extract_user_text(payload: dict) -> str:
+def _extract_user_text(payload: MemoryUpdatePayload) -> str:
     """Extract user-provided text from payload.
 
     Looks for 'messages' list, filters to user role, joins non-empty strings.

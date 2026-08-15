@@ -27,6 +27,7 @@ from app.logging import get_logger, structured_log
 from app.schemas import GraphState
 from app.tools import ALL_TOOLS
 from memory.service.main import enqueue_memory_update, load_memory_context
+from shared.schemas import MemoryUpdatePayload
 
 log = get_logger(__name__)
 
@@ -157,7 +158,7 @@ def memory_updater(state: GraphState) -> dict:
         if role in last_by_role
     ]
 
-    payload = {
+    payload: MemoryUpdatePayload = {
         "trigger": "chat_turn",
         "memory_loaded": state.get("memory_loaded", False),
         "memory_context": state.get("memory_context", "")[:2000],

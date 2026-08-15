@@ -18,9 +18,10 @@ from memory.config import (
 )
 from memory.db import get_conn
 from memory.db import missing_required_tables
-from memory.schemas import EnqueueDecision
-from memory.schemas import MemoryContext
-from memory.schemas import MemoryRuntimeStatus
+from shared.schemas import EnqueueDecision
+from shared.schemas import MemoryContext
+from shared.schemas import MemoryRuntimeStatus
+from shared.schemas import MemoryUpdatePayload
 from memory.service.utils import _do_enqueue_job
 from memory.service.utils import _exceeds_rate_limit
 from memory.service.utils import _extract_user_text
@@ -179,7 +180,7 @@ def enqueue_memory_update(
     user_id: int | None,
     subject_id: int | None,
     chat_id: int | None,
-    payload: dict,
+    payload: MemoryUpdatePayload,
 ) -> EnqueueDecision:
     """Decide whether to enqueue a memory update job.
 

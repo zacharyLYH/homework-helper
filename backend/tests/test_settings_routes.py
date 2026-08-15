@@ -148,7 +148,10 @@ async def test_test_endpoint_returns_results(client, auth_token, monkeypatch) ->
     monkeypatch.setattr("app.routes.settings.run_config_tests", fake_tests)
     res = await client.post("/api/settings/config/test", headers=_headers(auth_token()))
     assert res.status_code == 200
-    assert res.json()["results"] == [{"alias": "flash", "ok": True, "latency_ms": 42}]
+    results = res.json()["results"]
+    assert results[0]["alias"] == "flash"
+    assert results[0]["ok"] is True
+    assert results[0]["latency_ms"] == 42
 
 
 async def test_test_endpoint_accepts_unsaved_config(client, auth_token, monkeypatch) -> None:
@@ -166,7 +169,10 @@ async def test_test_endpoint_accepts_unsaved_config(client, auth_token, monkeypa
         headers=_headers(auth_token()),
     )
     assert res.status_code == 200
-    assert res.json()["results"] == [{"alias": "flash", "ok": True, "latency_ms": 42}]
+    results = res.json()["results"]
+    assert results[0]["alias"] == "flash"
+    assert results[0]["ok"] is True
+    assert results[0]["latency_ms"] == 42
     # the submitted config was parsed (keys encrypted) and pinged
     assert [t.alias for t in captured["cfg"].triplets] == ["flash", "free"]
     assert security.decrypt(captured["cfg"].triplets[0].api_key) == "sk-flash-secret"

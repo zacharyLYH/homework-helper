@@ -15,18 +15,21 @@ from app.db import (
 from app.email import send_verification_email
 from app.logging import get_logger
 from app.schemas import (
+    AuthMeResponse,
+    AuthRefreshResponse,
     AuthRequestCodeRequest,
     AuthRequestCodeResponse,
     AuthVerifyRequest,
     AuthVerifyResponse,
-    User,
+    MessageResponse,
 )
+from shared.schemas import User
 
 log = get_logger(__name__)
 router = APIRouter()
 
 
-def _set_token_cookies(response: Response, access_token: str, refresh_token: str | None = None):
+def _set_token_cookies(response: Response, access_token: str, refresh_token: str | None = None) -> None:
     kwargs = {}
     if settings.cookie_domain:
         kwargs["domain"] = settings.cookie_domain
@@ -54,7 +57,7 @@ def _set_token_cookies(response: Response, access_token: str, refresh_token: str
 
 
 @router.post("/api/auth/request-code", response_model=AuthRequestCodeResponse)
-async def request_code(req: AuthRequestCodeRequest):
+async def request_code(req: AuthRequestCodeRequest) -> AuthRequestCodeResponse:
     user = get_user_by_email(req.email)
     if not user:
         raise HTTPException(status_code=404, detail="Not registered")
@@ -67,7 +70,7 @@ async def request_code(req: AuthRequestCodeRequest):
 
 
 @router.post("/api/auth/verify", response_model=AuthVerifyResponse)
-async def verify(req: AuthVerifyRequest, response: Response):
+async def verify(req: AuthVerifyRequest, response: Response) -> AuthVerifyResponse:
     if not verify_code(req.email, req.code):
         raise HTTPException(status_code=401, detail="Invalid or expired code")
 
@@ -84,7 +87,7 @@ async def verify(req: AuthVerifyRequest, response: Response):
 
 
 @router.post("/api/auth/refresh")
-async def refresh(request: Request, response: Response):
+async def refresh(request: Request, response: Response) -> AuthRefreshResponse:
     token = request.cookies.get("refresh_token")
     if not token:
         raise HTTPException(status_code=401, detail="No refresh token")
@@ -120,11 +123,11 @@ async def refresh(request: Request, response: Response):
 
     access_token = create_access_token(user)
     _set_token_cookies(response, access_token)
-    return {"access_token": access_token}
+    return AuthRefreshResponse(access_token=access_token)
 
 
 @router.post("/api/auth/logout")
-async def logout(request: Request, response: Response):
+async def logout(request: Request, response: Response) -> MessageResponse:
     refresh_token = request.cookies.get("refresh_token")
     if refresh_token:
         try:
@@ -136,9 +139,9 @@ async def logout(request: Request, response: Response):
             pass
     response.delete_cookie("jwt_token", path="/")
     response.delete_cookie("refresh_token", path="/")
-    return {"message": "Logged out"}
+    return MessageResponse(message="Logged out")
 
 
 @router.get("/api/auth/me")
-async def get_me(user: User = Depends(get_current_user)):
-    return {"id": user.id, "email": user.email}
+async def get_me(user: User = Depends(get_current_user)) -> AuthMeResponse:
+    return AuthMeResponse(id=user.id, email=user.email)
