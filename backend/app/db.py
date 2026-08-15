@@ -35,6 +35,7 @@ MAIN_SCHEMA_SQL = """
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         email TEXT UNIQUE NOT NULL,
         refresh_token_expires_at TEXT,
+        llm_config_yaml TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -172,7 +173,16 @@ def init_db():
     log.info("Initializing database at %s", DB_PATH)
     with get_conn() as conn:
         conn.executescript(MAIN_SCHEMA_SQL)
+        _add_missing_columns(conn)
     log.info("Database initialized")
+
+
+def _add_missing_columns(conn: sqlite3.Connection) -> None:
+    """Idempotent migrations for databases created before a schema change."""
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+    if "llm_config_yaml" not in existing:
+        conn.execute("ALTER TABLE users ADD COLUMN llm_config_yaml TEXT")
+        log.info("Added llm_config_yaml column to users table")
 
 
 def init_debug_db():
@@ -223,6 +233,17 @@ def list_all_users(conn: sqlite3.Connection | None = None) -> list[User]:
     with _conn_ctx(conn) as c:
         rows = c.execute("SELECT * FROM users ORDER BY created_at").fetchall()
         return [_row_to_user(r) for r in rows]
+
+
+def get_user_llm_config_yaml(user_id: int | None) -> str | None:
+    with get_conn() as conn:
+        row = conn.execute("SELECT llm_config_yaml FROM users WHERE id = ?", (user_id,)).fetchone()
+        return row["llm_config_yaml"] if row else None
+
+
+def save_user_llm_config_yaml(user_id: int, yaml_text: str) -> None:
+    with get_conn() as conn:
+        conn.execute("UPDATE users SET llm_config_yaml = ? WHERE id = ?", (yaml_text, user_id))
 
 
 # --- Subject operations ---

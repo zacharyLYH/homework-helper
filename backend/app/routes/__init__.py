@@ -4,6 +4,7 @@ from app.routes.auth import router as auth_router
 from app.routes.chat import router as chat_router
 from app.routes.debug import router as debug_router
 from app.routes.health import router as health_router
+from app.routes.settings import router as settings_router
 from app.routes.subjects_chats import router as subjects_chats_router
 from app.routes.tools import router as tools_router
 from memory.routes import router as memory_router
@@ -15,4 +16,5 @@ api_router.include_router(chat_router)
 api_router.include_router(tools_router)
 api_router.include_router(debug_router)
 api_router.include_router(subjects_chats_router)
+api_router.include_router(settings_router)
 api_router.include_router(memory_router)

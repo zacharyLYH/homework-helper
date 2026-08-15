@@ -1,5 +1,5 @@
 import { expect, test as base } from "@playwright/test";
-import { initMockBackend, DEFAULT_STREAM } from "./helpers/stream";
+import { initMockBackend, DEFAULT_STREAM, DEFAULT_LLM_CONFIG, CATALOG } from "./helpers/stream";
 
 // Test harness default: a logged-in app over a fully mocked backend.
 //
@@ -16,7 +16,12 @@ export const test = base.extend<{ auth: AuthMode; theme: ThemeMode }>({
   auth: ["authenticated", { option: true }],
   theme: ["dark", { option: true }],
   page: async ({ page, auth, theme }, use) => {
-    await initMockBackend(page, { auth: auth === "authenticated", defaultSpec: DEFAULT_STREAM });
+    await initMockBackend(page, {
+      auth: auth === "authenticated",
+      defaultSpec: DEFAULT_STREAM,
+      defaultLlmConfig: DEFAULT_LLM_CONFIG,
+      catalog: CATALOG,
+    });
     // Pins the app theme (the app defaults to "dark" without this).
     await page.addInitScript((t) => localStorage.setItem("vite-ui-theme", t), theme);
     await use(page);

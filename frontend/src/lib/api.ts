@@ -280,14 +280,6 @@ export async function updateSubject(subjectId: number, name: string): Promise<Su
   return res.json();
 }
 
-export async function deleteSubject(subjectId: number): Promise<void> {
-  const res = await fetch(`${API_BASE}/subjects/${subjectId}`, {
-    method: "DELETE",
-    credentials: "include",
-  });
-  if (!res.ok) throw new Error("Failed to delete subject");
-}
-
 export async function getChats(subjectId: number): Promise<Chat[]> {
   const res = await fetch(`${API_BASE}/chats?subject_id=${subjectId}`, { credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch chats");
@@ -306,12 +298,6 @@ export async function createChat(subjectId: number, title: string = "New Chat"):
   return res.json();
 }
 
-export async function getChat(chatId: number): Promise<Chat> {
-  const res = await fetch(`${API_BASE}/chats/${chatId}`, { credentials: "include" });
-  if (!res.ok) throw new Error("Failed to fetch chat");
-  return res.json();
-}
-
 export async function updateChatTitle(chatId: number, title: string): Promise<Chat> {
   const res = await fetch(`${API_BASE}/chats/${chatId}?title=${encodeURIComponent(title)}`, {
     method: "PATCH",
@@ -322,14 +308,6 @@ export async function updateChatTitle(chatId: number, title: string): Promise<Ch
     throw new Error(err.detail || "Failed to update chat");
   }
   return res.json();
-}
-
-export async function deleteChat(chatId: number): Promise<void> {
-  const res = await fetch(`${API_BASE}/chats/${chatId}`, {
-    method: "DELETE",
-    credentials: "include",
-  });
-  if (!res.ok) throw new Error("Failed to delete chat");
 }
 
 export async function getMessages(chatId: number): Promise<Message[]> {

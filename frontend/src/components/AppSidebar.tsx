@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   PanelLeftClose,
   MessageSquarePlus,
   MessageSquare,
   ChevronDown,
+  Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,6 +39,7 @@ import {
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -85,6 +88,7 @@ export function AppSidebar({
   onChatUpdated,
 }: AppSidebarProps) {
   const { toggleSidebar, state, isMobile } = useSidebar();
+  const navigate = useNavigate();
 
   const [createType, setCreateType] = useState<"subject" | "chat">("subject");
   const [subjectName, setSubjectName] = useState("");
@@ -348,6 +352,25 @@ export function AppSidebar({
             ))
           )}
         </SidebarContent>
+
+        <SidebarFooter className="p-2 group-data-[collapsible=icon]:p-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start gap-2 cursor-pointer group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:justify-center"
+                onClick={() => navigate("/settings")}
+              >
+                <Settings className="h-4 w-4 shrink-0" />
+                <span className="group-data-[collapsible=icon]:hidden">Settings</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="group-data-[collapsible=icon]:block hidden">
+              Settings
+            </TooltipContent>
+          </Tooltip>
+        </SidebarFooter>
       </Sidebar>
 
       <Dialog open={open} onOpenChange={handleOpenChange}>

@@ -32,6 +32,12 @@ def _extract_sse(body: str) -> list[dict]:
 @pytest.fixture
 def chat(client, seed):
     seed(users=["alice@school.edu"])
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id FROM users WHERE email = 'alice@school.edu'"
+        ).fetchone()
+    from tests.mockers import seed_llm_config
+    seed_llm_config(row["id"])
 
     async def _setup():
         await client.post("/api/auth/request-code", json={"email": "alice@school.edu"})

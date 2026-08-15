@@ -24,6 +24,7 @@ CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT UNIQUE NOT NULL,
     refresh_token_expires_at TEXT,
+    llm_config_yaml TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

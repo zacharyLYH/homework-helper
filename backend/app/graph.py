@@ -22,7 +22,7 @@ from app.constants import (
     STATE_PENDING_TOOL_CALLS_DATA,
     STATE_REJECTED_REASON,
 )
-from app.llm import stream_llm
+from app.llmconfig import router as llm_router
 from app.logging import get_logger, structured_log
 from app.schemas import GraphState
 from app.tools import ALL_TOOLS
@@ -288,6 +288,7 @@ async def _node_with_prompt(
     memory_loaded = bool(state.get("memory_loaded", False))
 
     messages = state[STATE_MESSAGES]
+    user_id = state.get("user_id")
     if system_prompt:
         final_prompt = system_prompt
         if memory_loaded and memory_context:
@@ -313,7 +314,13 @@ async def _node_with_prompt(
             structured_log("memory_context_injected", memory_loaded=False, context_chars=0)
 
         messages = [SystemMessage(content=final_prompt)] + messages
-    async for chunk, _model in stream_llm(messages, bind_tools=bind_tools, config=config):
+    async for chunk in llm_router.stream(
+        messages,
+        user_id=user_id,
+        operation="chat",
+        bind_tools=bind_tools,
+        config=config,
+    ):
         yield {STATE_MESSAGES: [chunk]}
 
 

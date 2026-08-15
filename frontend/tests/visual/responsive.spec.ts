@@ -1,6 +1,7 @@
 import { test, expect } from "../base.fixture";
 import { ChatPage } from "../pages/chat.page";
 import { WhiteboardPage } from "../pages/whiteboard.page";
+import { EMPTY_LLM_CONFIG, stubLlmConfig } from "../helpers/stream";
 import { maskDynamicContent } from "./masking";
 
 type PageLike = import("@playwright/test").Page;
@@ -156,6 +157,31 @@ const SCENES: Scene[] = [
       await page.locator("canvas").waitFor();
       await whiteboard.drawStroke();
       await expect(whiteboard.attachButton()).toBeEnabled();
+    },
+  },
+  {
+    name: "settings-welcome",
+    prepare: async (page) => {
+      await stubLlmConfig(page, EMPTY_LLM_CONFIG);
+      await page.goto("/settings");
+      await page.getByRole("button", { name: "Add model" }).first().waitFor();
+    },
+  },
+  {
+    name: "settings-models",
+    prepare: async (page) => {
+      // Default mock config: one wired model → Models step with a row + continue.
+      await page.goto("/settings");
+      await page.getByRole("button", { name: "Continue to Chat" }).waitFor();
+    },
+  },
+  {
+    name: "settings-dialog",
+    prepare: async (page) => {
+      await stubLlmConfig(page, EMPTY_LLM_CONFIG);
+      await page.goto("/settings");
+      await page.getByRole("button", { name: "Add model" }).first().click();
+      await page.getByRole("dialog").waitFor();
     },
   },
 ];

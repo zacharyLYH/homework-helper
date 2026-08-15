@@ -98,6 +98,8 @@ HOMEWORK_CORPUS = [
     "what do you mean by that",
     "am i on the right track",
     "is this the right approach",
+    "what is a limit",
+    "where is missoouri",
     # General homework vocabulary.
     "my homework assignment",
     "my math homework",

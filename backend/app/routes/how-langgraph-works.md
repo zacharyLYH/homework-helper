@@ -6,12 +6,15 @@ When you type "what is 2+2?" in the chat UI:
 - Starts streaming the graph via compiled_graph.astream_events(initial_state)
 2. agent node runs
 - Prepares messages: prepends SystemMessage (the "you are a helpful assistant" prompt)
-- Calls stream_llm() which does an HTTP POST to OpenRouter/ChatOpenAI with stream: true
+- Calls llmconfig.router.stream() which resolves the user's saved LLM config
+  (chat operation chain) and does an HTTP POST to that provider's
+  OpenAI-compatible endpoint with stream: true
 - The LLM streams back chunks (SSE events). Each chunk is an AIMessageChunk — either text tokens or tool call chunks
 - The agent wraps each chunk as {"messages": [chunk], "pending_tool_calls": N} and yields it to LangGraph
 - After streaming ends, accumulates partial tool_call_chunks into complete tool call data and yields pending_tool_calls_data
 3. The LLM decides to call calculator(expression="2+2")
-- stream_llm yields chunks with tool_call_chunks
+- The router's stream yields chunks with tool_call_chunks (falling back to the
+  next alias in the config on rate_limit/server_error)
 - The agent accumulates name, args, and id across chunks (grouped by index)
 - After all chunks, yields {pending_tool_calls: 1, pending_tool_calls_data: [{name: "calculator", args: {expression: "2+2"}}]}
 4. route_after_agent checks the switch

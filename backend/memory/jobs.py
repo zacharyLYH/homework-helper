@@ -10,10 +10,13 @@ The worker is intentionally deterministic and best-effort:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import time
 from dataclasses import dataclass
 
+from app.llmconfig import router as llm_router
+from app.llmconfig import store as llm_config_store
 from app.logging import get_logger
 from memory.db import get_conn
 from memory.db import init_db
@@ -49,6 +52,47 @@ def _extract_observation(payload: dict) -> str:
 
 	trigger = str(payload.get("trigger", "chat_turn")).strip() or "chat_turn"
 	return f"Memory update captured from {trigger}."
+
+
+def _maybe_llm_observation(job: dict, payload: dict) -> str | None:
+    """Use the user's memory-operation model to extract an observation.
+
+    Returns ``None`` when the user has no usable config or the call fails, so
+    the caller falls back to the deterministic heuristic.
+    """
+    user_id = int(job["user_id"])
+    try:
+        cfg = llm_config_store.get_config(user_id)
+    except Exception:
+        return None
+    if cfg is None or not cfg.memory.order:
+        return None
+
+    messages = payload.get("messages")
+    if not isinstance(messages, list) or not messages:
+        return None
+    transcript = "\n".join(
+        f"{str(m.get('role', 'user'))}: {str(m.get('content', ''))[:500]}"
+        for m in messages[-6:]
+        if isinstance(m, dict)
+    )
+
+    prompt = (
+        "Extract ONE concise, factual observation about this learner's "
+        "homework performance (strengths, recurring mistakes, or strategies) "
+        "from the conversation below. Reply with a single short sentence and "
+        "nothing else.\n\n"
+        f"{transcript}\n\n"
+        "Observation:"
+    )
+
+    try:
+        return asyncio.run(
+            llm_router.generate(prompt, user_id=user_id, operation="memory")
+        )
+    except Exception as exc:
+        log.warning("Memory LLM observation failed, using heuristic fallback: %s", exc)
+        return None
 
 
 def _build_summary(*, user_id: int, subject_id: int) -> str:
@@ -207,7 +251,7 @@ def _process_claimed_job(job: dict) -> None:
         if isinstance(parsed, dict):
             payload = parsed
 
-    observation = _extract_observation(payload)
+    observation = _maybe_llm_observation(job, payload) or _extract_observation(payload)
 
     with get_conn() as conn:
         conn.execute(

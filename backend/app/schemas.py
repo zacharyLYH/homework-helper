@@ -1,5 +1,4 @@
 import enum
-import json
 from datetime import datetime
 from typing import Any, Optional
 
@@ -12,9 +11,8 @@ from typing_extensions import Annotated, TypedDict
 # --- LangGraph State ---
 
 
-class  GraphState(TypedDict):
+class GraphState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
-    model: str
     pending_tool_calls: int
     pending_tool_calls_data: list[dict]
     called_tools: list[str]
@@ -74,8 +72,6 @@ class ElementSpec(BaseModel):
     strokeWidth: Optional[float] = None
     fill: Optional[str] = None
     kind: Optional[str] = None
-    from_id: Optional[str] = None
-    to_id: Optional[str] = None
     directed: Optional[bool] = None
 
 
@@ -84,7 +80,6 @@ class ElementSpec(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
-    thread_id: Optional[str] = None
     chat_id: Optional[int] = None
     image: Optional[str] = None
     image_media_type: Optional[str] = None
@@ -153,16 +148,6 @@ class Message(BaseModel):
     quote: Optional[str] = None
     token_count: int = 0
     created_at: datetime
-    
-    @property
-    def model(self) -> str:
-        """Extract model from metadata_json, default to 'unknown'."""
-        if not self.metadata_json:
-            return "unknown"
-        try:
-            return json.loads(self.metadata_json).get("model", "unknown")
-        except Exception:
-            return "unknown"
 
 
 # --- Auth Models ---

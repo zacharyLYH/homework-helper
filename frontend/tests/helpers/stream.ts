@@ -68,6 +68,71 @@ export const DEFAULT_STREAM: StreamSpec = sseStream([
 ]);
 
 // ---------------------------------------------------------------------------
+// LLM settings fixtures. The default config has chat + memory wired so the
+// chat page stays usable in every existing test; settings tests swap it via
+// `stubLlmConfig`. PUTs are persisted to localStorage so reloads behave like a
+// real backend.
+
+// NOTE: everything below is consumed either as a serialized init-script
+// argument or inside `mockBackendClient`, which is itself serialized into the
+// browser. Never reference these module-scope consts from inside a function
+// Playwright serializes — inline the strings or pass them via the `config`
+// argument, exactly like `defaultSpec` already does.
+
+export const EMPTY_LLM_CONFIG = {
+  version: 1,
+  name: "My Config",
+  triplets: [],
+  chat: { order: [], rules: [] },
+  memory: { order: [], rules: [] },
+};
+
+export const DEFAULT_LLM_CONFIG = {
+  version: 1,
+  name: "My Config",
+  triplets: [
+    { alias: "flash", provider: "gemini", model: "gemini-3.7-flash", api_key: "sk-f****cret", has_key: true },
+  ],
+  chat: { order: ["flash"], rules: [] },
+  memory: { order: ["flash"], rules: [] },
+};
+
+export const CATALOG = {
+  providers: [
+    { id: "gemini", name: "Google Gemini", key_url: "https://aistudio.google.com/apikey" },
+    { id: "openrouter", name: "OpenRouter", key_url: "https://openrouter.ai/keys" },
+    { id: "openai", name: "OpenAI", key_url: "https://platform.openai.com/api-keys" },
+    { id: "anthropic", name: "Anthropic", key_url: "https://console.anthropic.com/settings/keys" },
+  ],
+  models: [
+    { id: "gemini-3.1-pro-preview", provider: "gemini", label: "Gemini 3.1 Pro (Preview)", tier: "premium", recommended: "chat", supports_images: true, price_in: "$2.00", price_out: "$12.00", price_note: "exact list price" },
+    { id: "gemini-3.7-flash", provider: "gemini", label: "Gemini 3.7 Flash", tier: "standard", recommended: "chat", supports_images: true, price_in: "$0.75", price_out: "$3.75", price_note: "intro price" },
+    { id: "deepseek/deepseek-v4-flash-0731", provider: "openrouter", label: "DeepSeek V4 Flash (open)", tier: "budget", recommended: "either", supports_images: true, price_in: "~$0.08", price_out: "~$0.16", price_note: "varies by host" },
+    { id: "openai/gpt-5.6-luna", provider: "openrouter", label: "GPT-5.6 Luna", tier: "budget", recommended: "either", supports_images: true, price_in: "$0.10", price_out: "$0.60", price_note: "varies by host" },
+    { id: "xiaomi/mimo-v2.5", provider: "openrouter", label: "MiMo-V2.5 (open)", tier: "budget", recommended: "either", supports_images: true, price_in: "$0.14", price_out: "$0.28", price_note: "varies by host" },
+    { id: "qwen/qwen3-vl-32b-instruct", provider: "openrouter", label: "Qwen3-VL 32B (open)", tier: "budget", recommended: "either", supports_images: true, price_in: "~$0.10", price_out: "~$0.42", price_note: "varies by host" },
+    { id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", provider: "openrouter", label: "NVIDIA Nemotron 3 Nano Omni (free)", tier: "free", recommended: "either", supports_images: true, price_in: "$0", price_out: "$0", price_note: "free" },
+    { id: "gemini-3.5-flash-lite", provider: "gemini", label: "Gemini 3.5 Flash-Lite", tier: "budget", recommended: "memory", supports_images: true, price_in: "$0.30", price_out: "$2.50", price_note: "exact list price" },
+    { id: "qwen/qwen3-14b", provider: "openrouter", label: "Qwen3 14B (open, text)", tier: "budget", recommended: "memory", supports_images: false, price_in: "~$0.10", price_out: "~$0.25", price_note: "varies by host" },
+    { id: "openrouter/free", provider: "openrouter", label: "OpenRouter Free", tier: "free", recommended: "memory", supports_images: false, price_in: "$0", price_out: "$0", price_note: "free" },
+  ],
+};
+
+// Applies `cfg` to every subsequent navigation in this page: the mock serves it
+// for /api/settings/config instead of the wired default. The window key and
+// storage key are inlined on purpose — this script is serialized into the page.
+export async function stubLlmConfig(page: Page, cfg: unknown): Promise<void> {
+  await page.addInitScript((c) => {
+    try {
+      window.localStorage.removeItem("__hh_llm_config_storage");
+    } catch {
+      /* ignore */
+    }
+    (window as any)["__hh_llm_config"] = c;
+  }, cfg);
+}
+
+// ---------------------------------------------------------------------------
 // The one backend mock. Installed as an init script (so it survives
 // navigation) by `initMockBackend`, it overrides window.fetch with a mock that
 // serves every /api endpoint from canned JSON. page.route is deliberately not
@@ -79,6 +144,10 @@ export interface MockBackendConfig {
   auth: boolean;
   // Initial streamed reply for /api/chat/stream.
   defaultSpec: StreamSpec;
+  // Defaults served for /api/settings/*. Wired (chat + memory) by default so
+  // existing chat tests keep working; settings tests swap via stubLlmConfig.
+  defaultLlmConfig?: unknown;
+  catalog?: unknown;
 }
 
 const STREAM_KEY = "__hh_stream_spec";
@@ -92,8 +161,57 @@ export const mockBackendClient = (config: MockBackendConfig) => {
   const original = w["__hh_orig_fetch"] ?? window.fetch;
   w["__hh_orig_fetch"] = original;
 
-  const handle = (path: string, method: string) => {
+  const handle = (path: string, method: string, payload?: unknown) => {
     const has = (s: string) => path.includes(s);
+
+    // Keys are inlined on purpose — this handler is serialized into the page.
+    const storedLlmConfig =
+      w["__hh_llm_config"] ??
+      (() => {
+        try {
+          const raw = localStorage.getItem("__hh_llm_config_storage");
+          return raw ? JSON.parse(raw) : null;
+        } catch {
+          return null;
+        }
+      })() ??
+      config.defaultLlmConfig;
+    if (has("/api/settings/catalog")) {
+      return { status: 200, body: config.catalog ?? { providers: [], models: [] } };
+    }
+    if (has("/api/settings/config")) {
+      if (method === "GET") return { status: 200, body: storedLlmConfig };
+      if (method === "PUT") {
+        const aliases = ((payload as any)?.triplets ?? []).map((t: any) => t.alias);
+        if (new Set(aliases).size !== aliases.length) {
+          // Mirrors the real backend rejecting duplicate triplet aliases.
+          return { status: 422, body: { detail: `Duplicate triplet aliases: ${aliases.join(", ")}` } };
+        }
+        w["__hh_llm_config"] = payload;
+        try {
+          localStorage.setItem("__hh_llm_config_storage", JSON.stringify(payload));
+        } catch {
+          /* ignore */
+        }
+        return { status: 200, body: payload };
+      }
+    }
+    if (has("/api/settings/config/test")) {
+      // A key containing "bad" simulates an invalid key → failed ping.
+      const cfg = (payload as any) ?? storedLlmConfig;
+      const results = (cfg?.triplets ?? []).map((t: any) => {
+        const bad = typeof t.api_key === "string" && t.api_key.includes("bad");
+        return {
+          alias: t.alias,
+          provider: t.provider,
+          model: t.model,
+          ok: !bad,
+          error: bad ? "HTTP 401: invalid api key" : null,
+          latency_ms: bad ? null : 42,
+        };
+      });
+      return { status: 200, body: { results } };
+    }
 
     if (has("/api/auth/me")) {
       return config.auth
@@ -186,6 +304,14 @@ export const mockBackendClient = (config: MockBackendConfig) => {
   w.fetch = (input: any, init?: any) => {
     const path = String(input);
     const method = (init?.method ?? "GET").toUpperCase();
+    let payload: unknown;
+    if (typeof init?.body === "string") {
+      try {
+        payload = JSON.parse(init.body);
+      } catch {
+        payload = undefined;
+      }
+    }
     if (path.includes("/api/chat/stream")) {
       if (Array.isArray(w["__hh_stream_capture"])) {
         const raw = init && typeof init.body === "string" ? init.body : "{}";
@@ -199,7 +325,7 @@ export const mockBackendClient = (config: MockBackendConfig) => {
         new Response(streamBody(), { status: 200, headers: { "content-type": "text/event-stream" } }),
       );
     }
-    const hit = handle(path, method);
+    const hit = handle(path, method, payload);
     if (hit) return Promise.resolve(hit.status === 204 ? new Response(null, { status: 204 }) : json(hit.status, hit.body));
     return original(input, init);
   };

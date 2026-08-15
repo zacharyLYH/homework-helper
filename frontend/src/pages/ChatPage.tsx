@@ -9,6 +9,7 @@ import ChatMessages from "@/components/ChatMessages";
 import ChatInput from "@/components/ChatInput";
 import type { Subject } from "@/lib/api";
 import { clearPendingDrawing, getPendingDrawing, renderElementsToDataURL, type WhiteboardElement } from "@/lib/whiteboard";
+import { getLlmConfig } from "@/lib/settings";
 
 export default function ChatPage() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -27,6 +28,7 @@ export default function ChatPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [attachedImage, setAttachedImage] = useState<{ data: string; mediaType: string; isDiagram: boolean } | null>(null);
+  const [llmReady, setLlmReady] = useState(true);
   const prevChatRef = useRef<number | null>(null);
 
   const loadSubjects = useCallback(async () => {
@@ -48,6 +50,19 @@ export default function ChatPage() {
   useEffect(() => {
     loadSubjects();
   }, [loadSubjects]);
+
+  // The LLM is "active" once both chat and memory have at least one model in
+  // their order. Until then the composer is hidden and the chat panel points
+  // the user to Settings. A failed config read is treated as ready so a
+  // transient API hiccup never bricks the chat UI.
+  useEffect(() => {
+    getLlmConfig()
+      .then((cfg) => {
+        const ready = cfg.chat.order.length > 0 && cfg.memory.order.length > 0;
+        setLlmReady(ready);
+      })
+      .catch(() => setLlmReady(true));
+  }, []);
 
   const handleSelectChat = async (chatId: number) => {
     setSelectedChatId(chatId);
@@ -303,22 +318,32 @@ export default function ChatPage() {
       <SidebarInset className="flex flex-col bg-background h-svh overflow-hidden">
         <ChatHeader email={user?.email} onLogout={handleLogout} />
         <div className="flex flex-1 overflow-hidden">
-          <ChatMessages selectedChatId={selectedChatId} messages={messages} streaming={streaming} toolCalls={toolCalls} onRetry={handleRetry} />
+          <ChatMessages
+            selectedChatId={selectedChatId}
+            messages={messages}
+            streaming={streaming}
+            toolCalls={toolCalls}
+            onRetry={handleRetry}
+            llmReady={llmReady}
+            onActivate={() => navigate("/settings")}
+          />
         </div>
-        <ChatInput
-          key={selectedChatId}
-          onSubmit={handleSubmitMessage}
-          streaming={streaming}
-          selectedChatId={selectedChatId}
-          selectedChatTokens={selectedChat?.total_tokens ?? 0}
-          chatTokenLimit={chatTokenLimit}
-          chatTokenPercent={chatTokenPercent}
-          quote={quote ?? undefined}
-          onClearQuote={() => setQuote(null)}
-          onQuote={(text) => setQuote(text)}
-          attachedImage={attachedImage}
-          onAttachedImageConsumed={() => setAttachedImage(null)}
-        />
+        {llmReady && (
+          <ChatInput
+            key={selectedChatId}
+            onSubmit={handleSubmitMessage}
+            streaming={streaming}
+            selectedChatId={selectedChatId}
+            selectedChatTokens={selectedChat?.total_tokens ?? 0}
+            chatTokenLimit={chatTokenLimit}
+            chatTokenPercent={chatTokenPercent}
+            quote={quote ?? undefined}
+            onClearQuote={() => setQuote(null)}
+            onQuote={(text) => setQuote(text)}
+            attachedImage={attachedImage}
+            onAttachedImageConsumed={() => setAttachedImage(null)}
+          />
+        )}
       </SidebarInset>
     </SidebarProvider>
   );

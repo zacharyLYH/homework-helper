@@ -4,7 +4,7 @@ import app.alignment as alignment
 from app.config import settings
 
 
-def _graph_state(message: str) -> dict:
+def _graph_state(message: str, user_id: int = 1) -> dict:
     from langchain_core.messages import HumanMessage
 
     return {
@@ -13,6 +13,11 @@ def _graph_state(message: str) -> dict:
         "pending_tool_calls": 0,
         "pending_tool_calls_data": [],
         "called_tools": [],
+        "user_id": user_id,
+        "subject_id": None,
+        "memory_context": "",
+        "memory_loaded": False,
+        "memory_enabled": False,
         "rejected_reason": "",
         "alignment_score": 0.0,
     }
@@ -81,13 +86,20 @@ async def test_graph_rejects_off_topic_before_agent():
     assert len(result["messages"]) == 1, "agent must not run for rejected requests"
 
 
-async def test_graph_aligned_reaches_agent():
+async def test_graph_aligned_reaches_agent(setup_test_db):
     from app import graph as graph_mod
-    from tests.mockers import mock_llm
+    from app.db import get_conn
+    from tests.mockers import mock_llm, seed_llm_config
+
+    with get_conn() as conn:
+        conn.execute("INSERT INTO users (email) VALUES ('alice@school.edu')")
+        row = conn.execute("SELECT id FROM users WHERE email = 'alice@school.edu'").fetchone()
+    user_id = row["id"]
+    seed_llm_config(user_id)
 
     with mock_llm(content="Let's break this down"):
         result = await graph_mod.compiled_graph.ainvoke(
-            _graph_state("help me solve this calculus problem"),
+            _graph_state("help me solve this calculus problem", user_id=user_id),
             config={"configurable": {"thread_id": "alignment-ok"}},
         )
 

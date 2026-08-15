@@ -16,14 +16,13 @@ from app.constants import (
     STATE_ALIGNMENT_SCORE,
     STATE_CALLED_TOOLS,
     STATE_MESSAGES,
-    STATE_MODEL,
     STATE_PENDING_TOOL_CALLS,
     STATE_PENDING_TOOL_CALLS_DATA,
     STATE_REJECTED_REASON,
 )
 from app.db import get_chat, get_messages, save_message, update_chat_title, update_chat_token_usage
 from app.graph import compiled_graph
-from app.llm import title_llm
+from app.llmconfig import router as llm_router
 from app.logging import get_logger, structured_log
 from app.schemas import ChatRequest, User
 from app.structured_log import force_structured_logger, get_structured_logger
@@ -100,7 +99,7 @@ def _save_assistant_message(chat_id: int | None, full_reply: str, model_used: st
         )
 
 
-async def generate_title_stream(chat_id: int) -> AsyncGenerator[str, None]:
+async def generate_title_stream(chat_id: int, user_id: int) -> AsyncGenerator[str, None]:
     messages = get_messages(chat_id)
     if not messages:
         return
@@ -109,21 +108,21 @@ async def generate_title_stream(chat_id: int) -> AsyncGenerator[str, None]:
     prompt = f"Generate a short title (max 40 chars) for this conversation:\n{conversation}\nTitle:"
 
     try:
-        async for chunk in title_llm.astream(prompt):
-            if hasattr(chunk, "content") and chunk.content:
-                yield str(chunk.content)
+        title = await llm_router.generate(prompt, user_id=user_id, operation="memory")
+        if title:
+            yield title.strip()
     except Exception as e:
         log.error("Title generation failed: %s", e)
 
 
-async def _maybe_generate_title(chat_id: int | None) -> AsyncGenerator[str, None]:
+async def _maybe_generate_title(chat_id: int | None, user_id: int) -> AsyncGenerator[str, None]:
     if not chat_id:
         return
     existing = get_chat(chat_id)
     if not existing or existing.title != "New Chat":
         return
     title = ""
-    async for title_chunk in generate_title_stream(chat_id):
+    async for title_chunk in generate_title_stream(chat_id, user_id):
         title += title_chunk
         yield f"data: {json.dumps({'type': 'title', 'content': title_chunk})}\n\n"
     if title.strip():
@@ -159,7 +158,6 @@ async def chat_stream(req: ChatRequest, request: Request, user: User = Depends(g
 
     initial_state = {
         STATE_MESSAGES: lc_messages,
-        STATE_MODEL: "unknown",
         STATE_PENDING_TOOL_CALLS: 0,
         STATE_PENDING_TOOL_CALLS_DATA: [],
         STATE_CALLED_TOOLS: [],
@@ -279,13 +277,16 @@ async def chat_stream(req: ChatRequest, request: Request, user: User = Depends(g
             except Exception as e:
                 log.error("Stream execution failed: %s", e, exc_info=True)
                 structured_log("stream_error", error=str(e))
+                await queue.put(
+                    f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+                )
             finally:
                 alignment_done.set()
                 await queue.put(None)
 
         async def _stream_title():
             if req.chat_id:
-                async for event in _maybe_generate_title(req.chat_id):
+                async for event in _maybe_generate_title(req.chat_id, user.id):
                     title_events.append(event)
 
         graph_task = asyncio.create_task(_stream_graph())

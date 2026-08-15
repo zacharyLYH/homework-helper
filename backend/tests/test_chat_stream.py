@@ -1,6 +1,7 @@
 import asyncio
 import json
-from unittest.mock import MagicMock, patch
+from collections.abc import AsyncGenerator
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -23,25 +24,97 @@ def _make_token():
     return create_access_token(user)
 
 
+def _sse(data: str) -> bytes:
+    return f"data: {data}\n\n".encode()
+
+
+def _chunk_event(content: str) -> str:
+    return json.dumps({
+        "id": "chatcmpl-mock",
+        "object": "chat.completion.chunk",
+        "created": 1677652288,
+        "model": "gpt-4",
+        "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": None}],
+    })
+
+
+def _finish_event() -> str:
+    return json.dumps({
+        "id": "chatcmpl-mock",
+        "object": "chat.completion.chunk",
+        "created": 1677652288,
+        "model": "gpt-4",
+        "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 15, "completion_tokens": 5, "total_tokens": 20},
+    })
+
+
+def _sse_stream(words: list[str]) -> AsyncGenerator[bytes, None]:
+    async def _body():
+        for word in words:
+            yield _sse(_chunk_event(word))
+        yield _sse(_finish_event())
+        yield b"data: [DONE]\n\n"
+
+    return _body()
+
+
+async def _save_config_for_alice(cfg) -> int:
+    from app.db import get_conn as _gc
+
+    with _gc() as conn:
+        user_id = conn.execute(
+            "SELECT id FROM users WHERE email = ?", ("alice@school.edu",)
+        ).fetchone()["id"]
+    from app.llmconfig import store
+
+    store.save_config(user_id, cfg)
+    return user_id
+
+
+async def _setup_chat_session(client) -> int:
+    await client.post("/api/auth/request-code", json={"email": "alice@school.edu"})
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT code FROM verification_codes WHERE email = ?", ("alice@school.edu",)
+        ).fetchone()
+        code = row["code"]
+    await client.post("/api/auth/verify", json={"email": "alice@school.edu", "code": code})
+    subject_resp = await client.post("/api/subjects", params={"name": "Math"})
+    subject_id = subject_resp.json()["id"]
+    chat_resp = await client.post("/api/chats", params={"subject_id": subject_id})
+    return chat_resp.json()["id"]
+
+
 @pytest.fixture
 def auth_and_chat(client, seed):
     seed(users=["alice@school.edu"])
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id FROM users WHERE email = 'alice@school.edu'"
+        ).fetchone()
+    from tests.mockers import seed_llm_config
+    seed_llm_config(row["id"])
 
     async def _setup():
-        await client.post("/api/auth/request-code", json={"email": "alice@school.edu"})
-        with get_conn() as conn:
-            row = conn.execute(
-                "SELECT code FROM verification_codes WHERE email = ?", ("alice@school.edu",)
-            ).fetchone()
-            code = row["code"]
-        await client.post("/api/auth/verify", json={"email": "alice@school.edu", "code": code})
-        subject_resp = await client.post("/api/subjects", params={"name": "Math"})
-        subject_id = subject_resp.json()["id"]
-        chat_resp = await client.post("/api/chats", params={"subject_id": subject_id})
-        chat_id = chat_resp.json()["id"]
-        return chat_id
+        return await _setup_chat_session(client)
 
     return _setup
+
+
+@pytest.fixture
+def auth_and_chat_no_config(client, seed):
+    seed(users=["alice@school.edu"])
+
+    async def _setup():
+        return await _setup_chat_session(client)
+
+    return _setup
+
+
+def _error_lines(body: str):
+    lines = [l for l in body.split("\n") if l.strip()]
+    return [l for l in lines if '"type": "error"' in l]
 
 
 # ── happy path (existing) ────────────────────────────────────────────
@@ -337,19 +410,17 @@ async def test_title_and_graph_run_concurrently(client, auth_and_chat):
         return httpx.Response(200, content=_sse_body(), headers={"Content-Type": "text/event-stream"})
 
     class _TitleMock:
-        async def astream(self, prompt):
+        async def __call__(self, chat_id, user_id):
             order.append("title_started")
             await asyncio.sleep(0.2)
-            chunk = MagicMock()
-            chunk.content = "Concurrent Title"
-            yield chunk
             order.append("title_ended")
+            yield "Concurrent Title"
 
     transport = httpx.MockTransport(_llm_handler)
     mock_client = httpx.AsyncClient(transport=transport)
 
     with patch("langchain_openai.chat_models.base._get_default_async_httpx_client", return_value=mock_client), \
-         patch("app.routes.chat.title_llm", _TitleMock()):
+         patch("app.routes.chat.generate_title_stream", _TitleMock()):
         resp = await client.post(
             "/api/chat/stream",
             json={"message": "help me with my calculus homework", "chat_id": chat_id},
@@ -531,3 +602,178 @@ async def test_build_lc_messages_attaches_image_with_history(setup_test_db):
     # Earlier user/assistant messages remain plain text.
     assert msgs[0].content == "what is binary code"
     assert msgs[1].content == "Binary code is a system..."
+
+
+# ── settings / LLM routing in the chat loop ─────────────────────────
+
+
+async def test_chat_stream_no_config_streams_error(client, auth_and_chat_no_config):
+    """A user with no LLM config gets a graceful error event, not a crash."""
+    chat_id = await auth_and_chat_no_config()
+    token = _make_token()
+
+    resp = await client.post(
+        "/api/chat/stream",
+        json={"message": "help me with my calculus homework", "chat_id": chat_id},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 200
+    errors = _error_lines(resp.text)
+    assert errors, "stream must surface an error event when no LLM config exists"
+    assert "No LLM config set" in json.loads(errors[0].removeprefix("data: "))["content"]
+
+
+async def test_chat_stream_empty_config_streams_error(client, auth_and_chat_no_config):
+    """A created-but-empty config (no chat order) also fails over to an error event."""
+    from app.llmconfig.model import LLMConfig
+
+    chat_id = await auth_and_chat_no_config()
+    token = _make_token()
+    await _save_config_for_alice(LLMConfig(triplets=[]))
+
+    resp = await client.post(
+        "/api/chat/stream",
+        json={"message": "help me with my calculus homework", "chat_id": chat_id},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 200
+    errors = _error_lines(resp.text)
+    assert errors
+    assert "No models configured" in json.loads(errors[0].removeprefix("data: "))["content"]
+
+
+async def test_chat_stream_resolves_configured_models(client, auth_and_chat):
+    """Happy path: the chat loop routes to the configured chat & memory models."""
+    from app.llmconfig import security
+    from app.llmconfig.model import LLMConfig, OperationConfig, Triplet
+
+    chat_id = await auth_and_chat()
+    token = _make_token()
+    await _save_config_for_alice(LLMConfig(
+        triplets=[
+            Triplet(alias="primary", provider="openai", model="gpt-4", api_key=security.encrypt("k")),
+            Triplet(alias="mem", provider="openai", model="gpt-4o-mini", api_key=security.encrypt("k")),
+        ],
+        chat=OperationConfig(order=["primary"], rules=[]),
+        memory=OperationConfig(order=["mem"], rules=[]),
+    ))
+
+    seen = {"chat": [], "memory": []}
+
+    async def _handler(request: httpx.Request) -> httpx.Response:
+        body = await request.aread()
+        req = json.loads(body) if body else {}
+        is_stream = req.get("stream", False)
+        key = "chat" if is_stream else "memory"
+        seen[key].append(req.get("model"))
+        if key == "memory":
+            return httpx.Response(200, json={
+                "id": "chatcmpl-mock",
+                "object": "chat.completion",
+                "model": req.get("model"),
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": "title"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5},
+            })
+        return httpx.Response(200, content=_sse_stream(["Hello ", "world"]), headers={"Content-Type": "text/event-stream"})
+
+    transport = httpx.MockTransport(_handler)
+    mock_client = httpx.AsyncClient(transport=transport)
+
+    with patch("langchain_openai.chat_models.base._get_default_async_httpx_client", return_value=mock_client):
+        resp = await client.post(
+            "/api/chat/stream",
+            json={"message": "help me with my calculus homework", "chat_id": chat_id},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert seen["chat"] == ["gpt-4"], "chat op must resolve to its configured model"
+    assert seen["memory"] == ["gpt-4o-mini"], "memory op (title) must resolve to its configured model"
+    token_lines = [l for l in resp.text.split("\n") if l.strip() and '"type": "token"' in l]
+    full = "".join(json.loads(l.removeprefix("data: "))["content"] for l in token_lines)
+    assert full == "Hello world"
+
+
+async def test_chat_stream_fails_over_on_rate_limit(client, auth_and_chat):
+    """Primary model 429s; the fallback model must stream the reply."""
+    from app.llmconfig import security
+    from app.llmconfig.model import LLMConfig, OperationConfig, Triplet
+
+    chat_id = await auth_and_chat()
+    token = _make_token()
+    await _save_config_for_alice(LLMConfig(
+        triplets=[
+            Triplet(alias="primary", provider="openai", model="gpt-4", api_key=security.encrypt("k")),
+            Triplet(alias="backup", provider="openai", model="gpt-4o-mini", api_key=security.encrypt("k")),
+        ],
+        chat=OperationConfig(order=["primary", "backup"], rules=[]),
+        memory=OperationConfig(order=["primary", "backup"], rules=[]),
+    ))
+
+    seen_models = []
+
+    async def _handler(request: httpx.Request) -> httpx.Response:
+        body = await request.aread()
+        req = json.loads(body) if body else {}
+        if not req.get("stream", False):
+            return httpx.Response(200, json={
+                "id": "chatcmpl-mock",
+                "object": "chat.completion",
+                "model": "gpt-4",
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": "title"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5},
+            })
+        seen_models.append(req.get("model"))
+        if seen_models[-1] == "gpt-4":
+            return httpx.Response(429, json={"error": {"message": "quota"}})
+        return httpx.Response(200, content=_sse_stream(["Hello ", "world"]), headers={"Content-Type": "text/event-stream"})
+
+    transport = httpx.MockTransport(_handler)
+    mock_client = httpx.AsyncClient(transport=transport)
+
+    with patch("langchain_openai.chat_models.base._get_default_async_httpx_client", return_value=mock_client):
+        resp = await client.post(
+            "/api/chat/stream",
+            json={"message": "help me with my calculus homework", "chat_id": chat_id},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert seen_models == ["gpt-4", "gpt-4o-mini"], "expected primary then fallback model calls"
+    token_lines = [l for l in resp.text.split("\n") if l.strip() and '"type": "token"' in l]
+    full = "".join(json.loads(l.removeprefix("data: "))["content"] for l in token_lines)
+    assert full == "Hello world"
+
+
+async def test_chat_stream_all_models_fail_streams_error(client, auth_and_chat):
+    """If every alias errors, the chat loop must stream an error instead of 500ing."""
+    from app.llmconfig import security
+    from app.llmconfig.model import LLMConfig, OperationConfig, Triplet
+
+    chat_id = await auth_and_chat()
+    token = _make_token()
+    await _save_config_for_alice(LLMConfig(
+        triplets=[
+            Triplet(alias="primary", provider="openai", model="gpt-4", api_key=security.encrypt("k")),
+            Triplet(alias="backup", provider="openai", model="gpt-4o-mini", api_key=security.encrypt("k")),
+        ],
+        chat=OperationConfig(order=["primary", "backup"], rules=[]),
+        memory=OperationConfig(order=["primary", "backup"], rules=[]),
+    ))
+
+    async def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, json={"error": {"message": "quota"}})
+
+    transport = httpx.MockTransport(_handler)
+    mock_client = httpx.AsyncClient(transport=transport)
+
+    with patch("langchain_openai.chat_models.base._get_default_async_httpx_client", return_value=mock_client):
+        resp = await client.post(
+            "/api/chat/stream",
+            json={"message": "help me with my calculus homework", "chat_id": chat_id},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert resp.status_code == 200
+    errors = _error_lines(resp.text)
+    assert errors, "stream must surface an error when every model fails"

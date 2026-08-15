@@ -4,6 +4,41 @@ from unittest.mock import patch
 import httpx
 
 
+def seed_llm_config(
+    user_id: int,
+    *,
+    api_key: str = "sk-test-key",
+    aliases=("primary",),
+    models=None,
+    chat_aliases=None,
+    memory_aliases=None,
+):
+    """Write a minimal valid LLM config for a user into the main DB.
+
+    Without a config the router refuses to call any model, so chat/title tests
+    must seed one before hitting /api/chat/stream.
+    """
+    from app.llmconfig import security, store
+    from app.llmconfig.model import LLMConfig, OperationConfig, Triplet
+
+    triplet_list = [
+        Triplet(
+            alias=alias,
+            provider="openai",
+            model=(models[i] if models else "gpt-4"),
+            api_key=security.encrypt(api_key),
+        )
+        for i, alias in enumerate(aliases)
+    ]
+    cfg = LLMConfig(
+        triplets=triplet_list,
+        chat=OperationConfig(order=list(chat_aliases or aliases), rules=[]),
+        memory=OperationConfig(order=list(memory_aliases or aliases), rules=[]),
+    )
+    store.save_config(user_id, cfg)
+    return cfg
+
+
 def mock_tool_llm(
     tool_name: str | None,
     tool_args: str,
@@ -205,17 +240,11 @@ def mock_llm(content: str = "Hello!", model: str = "gpt-4"):
 
 
 def mock_title_llm(title: str = "Test Chat Title"):
-    from unittest.mock import MagicMock
+    """Patch the title generator so a fixed title streams out."""
+    async def _fake_title_stream(chat_id: int, user_id: int):
+        yield title
 
-    mock = MagicMock()
-
-    async def _mock_astream(prompt):
-        chunk = MagicMock()
-        chunk.content = title
-        yield chunk
-
-    mock.astream = _mock_astream
-    return patch("app.routes.chat.title_llm", mock)
+    return patch("app.routes.chat.generate_title_stream", _fake_title_stream)
 
 
 def mock_email_send():

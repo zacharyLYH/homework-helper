@@ -2,7 +2,6 @@
 
 # LangGraph state keys
 STATE_MESSAGES = "messages"
-STATE_MODEL = "model"
 STATE_PENDING_TOOL_CALLS = "pending_tool_calls"
 STATE_PENDING_TOOL_CALLS_DATA = "pending_tool_calls_data"
 STATE_CALLED_TOOLS = "called_tools"
