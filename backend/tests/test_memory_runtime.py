@@ -1,7 +1,7 @@
 import pytest
 
 from memory import db as memory_db
-from memory.service import enforce_memory_runtime, get_memory_runtime_status
+from memory.service.main import enforce_memory_runtime, get_memory_runtime_status
 
 
 def test_memory_runtime_disabled_by_default(tmp_path, monkeypatch):

@@ -1,9 +1,12 @@
 from fastapi import APIRouter
 
-from memory import db, jobs, routes, schemas, seed, service
+import memory.jobs as jobs
+import memory.service as service
+from memory import db, routes, schemas, seed
 from memory.config import DEFAULT_MEMORY_DB_PATH, REQUIRED_MEMORY_TABLES
+from memory.jobs.main import process_pending_jobs
 from memory.schemas import MemoryRuntimeStatus
-from memory.service import enforce_memory_runtime, get_memory_runtime_status
+from memory.service.main import enforce_memory_runtime, get_memory_runtime_status
 
 
 def test_memory_package_entrypoints_are_importable() -> None:
@@ -16,8 +19,9 @@ def test_memory_package_entrypoints_are_importable() -> None:
 
 def test_memory_submodules_have_expected_contracts() -> None:
     assert callable(db.missing_required_tables)
-    assert callable(jobs.process_pending_jobs)
+    assert callable(process_pending_jobs)
     assert callable(seed.run_seed)
     assert isinstance(routes.router, APIRouter)
     assert schemas.MemoryRuntimeStatus is MemoryRuntimeStatus
-    assert service.get_memory_runtime_status is get_memory_runtime_status
+    assert service.__name__ == "memory.service"
+    assert jobs.__name__ == "memory.jobs"

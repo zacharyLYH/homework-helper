@@ -1,19 +1,16 @@
-INSERT OR IGNORE INTO concepts (concept_key, display_name)
+INSERT OR IGNORE INTO concepts (subject_id, concept_key, display_name, aliases)
 VALUES
-    ('quadratic_formula', 'Quadratic Formula'),
-    ('completing_the_square', 'Completing the Square');
-
-INSERT OR IGNORE INTO concept_aliases (concept_id, alias)
-SELECT id, 'quadratic equation formula'
-FROM concepts
-WHERE concept_key = 'quadratic_formula';
+    (1, 'quadratic_formula', 'Quadratic Formula', '["quadratic equation formula"]'),
+    (1, 'completing_the_square', 'Completing the Square', '[]');
 
 INSERT INTO concept_edges (from_concept_id, to_concept_id, relation, weight)
 SELECT c1.id, c2.id, 'related', 0.8
 FROM concepts c1
 JOIN concepts c2
   ON c1.concept_key = 'completing_the_square'
+ AND c1.subject_id = 1
  AND c2.concept_key = 'quadratic_formula'
+ AND c2.subject_id = 1
 WHERE NOT EXISTS (
   SELECT 1
   FROM concept_edges ce
@@ -32,21 +29,15 @@ WHERE NOT EXISTS (
     AND observation = 'Needs reminders to track signs in b^2 - 4ac.'
 );
 
-INSERT OR IGNORE INTO learner_traits (user_id, subject_id, trait_key, trait_value)
-VALUES (1, 1, 'prefers_step_by_step', 'true');
+INSERT OR IGNORE INTO learner_traits (user_id, subject_id, traits_json)
+VALUES (1, 1, '{"prefers_step_by_step": true}');
 
-INSERT OR IGNORE INTO memory_versions (user_id, subject_id, version, summary)
+INSERT OR IGNORE INTO memory_summary (user_id, subject_id, summary)
 VALUES (
-  1,
   1,
   1,
   'Recent learner observations:\n- Needs reminders to track signs in b^2 - 4ac.'
 );
-
-INSERT OR IGNORE INTO memory_current (user_id, subject_id, version_id)
-SELECT 1, 1, mv.id
-FROM memory_versions mv
-WHERE mv.user_id = 1 AND mv.subject_id = 1 AND mv.version = 1;
 
 INSERT INTO memory_update_jobs (user_id, subject_id, chat_id, status, payload_json, updated_at)
 SELECT

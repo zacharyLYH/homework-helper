@@ -26,7 +26,7 @@ from app.llmconfig import router as llm_router
 from app.logging import get_logger, structured_log
 from app.schemas import GraphState
 from app.tools import ALL_TOOLS
-from memory.service import enqueue_memory_update, load_memory_context
+from memory.service.main import enqueue_memory_update, load_memory_context
 
 log = get_logger(__name__)
 
@@ -111,17 +111,17 @@ def memory_loader(state: GraphState) -> dict:
 
     log.info(
         "Memory loader completed: loaded=%s context_chars=%d",
-        bool(context),
-        len(context),
+        not context.is_empty,
+        len(context.rendered),
     )
 
     structured_log(
         "memory_loader_done",
-        has_context=bool(context),
+        has_context=not context.is_empty,
         user_id=user_id,
         subject_id=subject_id,
     )
-    return {"memory_context": context, "memory_loaded": bool(context)}
+    return {"memory_context": context.rendered, "memory_loaded": not context.is_empty}
 
 
 def memory_updater(state: GraphState) -> dict:
@@ -140,15 +140,22 @@ def memory_updater(state: GraphState) -> dict:
     log.info("Memory updater started: user_id=%s subject_id=%s", user_id, subject_id)
 
     messages = state.get("messages", [])
-    snippet: list[dict[str, str]] = []
-    for msg in messages[-4:]:
+    # Walk back to find the last non-empty human and ai messages (streaming leaves empty tail chunks)
+    last_by_role: dict[str, str] = {}
+    for msg in reversed(messages):
         role = getattr(msg, "type", "unknown")
-        snippet.append(
-            {
-                "role": role,
-                "content": _stringify_content(getattr(msg, "content", ""))[:1000],
-            }
-        )
+        if role not in last_by_role:
+            content = _stringify_content(getattr(msg, "content", ""))
+            if content.strip():
+                last_by_role[role] = content
+        if "human" in last_by_role and "ai" in last_by_role:
+            break
+
+    snippet: list[dict[str, str]] = [
+        {"role": role, "content": last_by_role[role][:400]}
+        for role in ("human", "ai")
+        if role in last_by_role
+    ]
 
     payload = {
         "trigger": "chat_turn",
@@ -158,10 +165,10 @@ def memory_updater(state: GraphState) -> dict:
     }
 
     try:
-        job_id = enqueue_memory_update(
+        decision = enqueue_memory_update(
             user_id=user_id,
             subject_id=subject_id,
-            chat_id=None,
+            chat_id=state.get("chat_id"),
             payload=payload,
         )
     except Exception as exc:  # pragma: no cover - defensive guard
@@ -169,11 +176,14 @@ def memory_updater(state: GraphState) -> dict:
         structured_log("memory_updater_error", error=str(exc))
         return {}
 
-    log.info("Memory updater enqueued job: job_id=%s", job_id)
+    log.info("Memory updater outcome: enqueued=%s reason=%s job_id=%s", decision.enqueued, decision.reason, decision.job_id)
 
     structured_log(
-        "memory_updater_enqueued",
-        job_id=job_id,
+        "memory_updater_outcome",
+        enqueued=decision.enqueued,
+        reason=decision.reason,
+        job_id=decision.job_id,
+        chat_id=state.get("chat_id"),
         user_id=user_id,
         subject_id=subject_id,
     )
@@ -266,12 +276,12 @@ def alignment_check(state: GraphState) -> dict:
     }
 
 
-def route_after_alignment(state: GraphState) -> Literal["agent", "end"]:
+def route_after_alignment(state: GraphState) -> Literal["memory_loader", "end"]:
     if state.get(STATE_REJECTED_REASON, ""):
         structured_log("graph_route", destination="end", reason="alignment_rejected")
         return END_LABEL
-    structured_log("graph_route", destination="agent", reason="alignment_ok")
-    return NODE_AGENT
+    structured_log("graph_route", destination="memory_loader", reason="alignment_ok")
+    return "memory_loader"
 
 
 # --- Agent node ---
@@ -416,12 +426,12 @@ def build_graph() -> CompiledStateGraph:
     graph_builder.add_node(NODE_TOOL_EXECUTOR, tool_executor)
     graph_builder.add_node("memory_updater", memory_updater)
 
-    graph_builder.add_edge(START, "memory_loader")
-    graph_builder.add_edge("memory_loader", NODE_ALIGNMENT_CHECK)
+    graph_builder.add_edge(START, NODE_ALIGNMENT_CHECK)
     graph_builder.add_conditional_edges(NODE_ALIGNMENT_CHECK, route_after_alignment, {
-        NODE_AGENT: NODE_AGENT,
+        "memory_loader": "memory_loader",
         END_LABEL: END,
     })
+    graph_builder.add_edge("memory_loader", NODE_AGENT)
     graph_builder.add_conditional_edges("agent", route_after_agent, {
         "tool_executor": "tool_executor",
         "memory_updater": "memory_updater",

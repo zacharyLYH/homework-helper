@@ -163,6 +163,7 @@ async def chat_stream(req: ChatRequest, request: Request, user: User = Depends(g
         STATE_CALLED_TOOLS: [],
         STATE_REJECTED_REASON: "",
         STATE_ALIGNMENT_SCORE: 0.0,
+        "chat_id": req.chat_id,
         "user_id": user.id,
         "subject_id": subject_id,
         "memory_context": "",

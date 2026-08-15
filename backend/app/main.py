@@ -7,7 +7,7 @@ from app.config import settings
 from app.db import init_db, init_debug_db
 from app.logging import get_logger
 from app.routes import api_router
-from memory.service import enforce_memory_runtime, get_memory_runtime_status
+from memory.service.main import enforce_memory_runtime, get_memory_runtime_status
 from app.structured_log import StructuredTraceMiddleware
 
 log = get_logger(__name__)

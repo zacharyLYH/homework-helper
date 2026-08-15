@@ -7,18 +7,15 @@ from memory.config import REQUIRED_MEMORY_TABLES, resolve_memory_db_path
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS concepts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    concept_key TEXT UNIQUE NOT NULL,
+    subject_id INTEGER NOT NULL,
+    concept_key TEXT NOT NULL,
     display_name TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    aliases TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(subject_id, concept_key)
 );
 
-CREATE TABLE IF NOT EXISTS concept_aliases (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    concept_id INTEGER NOT NULL,
-    alias TEXT UNIQUE NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (concept_id) REFERENCES concepts(id)
-);
+CREATE INDEX IF NOT EXISTS idx_concepts_subject ON concepts (subject_id);
 
 CREATE TABLE IF NOT EXISTS concept_edges (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,9 +24,13 @@ CREATE TABLE IF NOT EXISTS concept_edges (
     relation TEXT NOT NULL,
     weight REAL NOT NULL DEFAULT 1.0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(from_concept_id, to_concept_id, relation),
     FOREIGN KEY (from_concept_id) REFERENCES concepts(id),
     FOREIGN KEY (to_concept_id) REFERENCES concepts(id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_edges_from ON concept_edges (from_concept_id);
+CREATE INDEX IF NOT EXISTS idx_edges_to ON concept_edges (to_concept_id);
 
 CREATE TABLE IF NOT EXISTS learner_observations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,6 +41,8 @@ CREATE TABLE IF NOT EXISTS learner_observations (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE INDEX IF NOT EXISTS idx_observations_scope_time ON learner_observations (user_id, subject_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS learner_concept_state (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -48,37 +51,28 @@ CREATE TABLE IF NOT EXISTS learner_concept_state (
     mastery REAL NOT NULL DEFAULT 0.0,
     confidence REAL NOT NULL DEFAULT 0.0,
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(user_id, subject_id, concept_id),
     FOREIGN KEY (concept_id) REFERENCES concepts(id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_concept_state_scope ON learner_concept_state (user_id, subject_id, mastery);
 
 CREATE TABLE IF NOT EXISTS learner_traits (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     subject_id INTEGER NOT NULL,
-    trait_key TEXT NOT NULL,
-    trait_value TEXT NOT NULL,
+    traits_json TEXT NOT NULL DEFAULT '{}',
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(user_id, subject_id, trait_key)
+    UNIQUE(user_id, subject_id)
 );
 
-CREATE TABLE IF NOT EXISTS memory_versions (
+CREATE TABLE IF NOT EXISTS memory_summary (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     subject_id INTEGER NOT NULL,
-    version INTEGER NOT NULL,
-    summary TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(user_id, subject_id, version)
-);
-
-CREATE TABLE IF NOT EXISTS memory_current (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    subject_id INTEGER NOT NULL,
-    version_id INTEGER NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(user_id, subject_id),
-    FOREIGN KEY (version_id) REFERENCES memory_versions(id)
+    UNIQUE(user_id, subject_id)
 );
 
 CREATE TABLE IF NOT EXISTS memory_update_jobs (
@@ -92,6 +86,9 @@ CREATE TABLE IF NOT EXISTS memory_update_jobs (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE INDEX IF NOT EXISTS idx_jobs_status_time ON memory_update_jobs (status, created_at);
+CREATE INDEX IF NOT EXISTS idx_jobs_scope_time ON memory_update_jobs (user_id, subject_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS retrieval_traces (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -100,6 +97,8 @@ CREATE TABLE IF NOT EXISTS retrieval_traces (
     result_json TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE INDEX IF NOT EXISTS idx_traces_scope_time ON retrieval_traces (user_id, subject_id, created_at DESC);
 """
 
 

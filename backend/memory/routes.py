@@ -4,7 +4,7 @@ from app.auth import get_current_user
 from app.db import get_subject
 from app.schemas import User
 from memory.db import get_conn
-from memory.service import load_memory_context
+from memory.service.main import load_memory_context
 
 
 router = APIRouter(tags=["memory"])
@@ -43,8 +43,8 @@ async def get_memory_context(
     return {
         "subject_id": subject_id,
         "user_id": user.id,
-        "memory_context": context,
-        "memory_loaded": bool(context),
+        "memory_context": context.rendered,
+        "memory_loaded": not context.is_empty,
     }
 
 

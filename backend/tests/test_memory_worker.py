@@ -1,11 +1,24 @@
 import json
-from unittest.mock import patch
-
-import httpx
+from unittest.mock import AsyncMock, patch
 
 from memory import db as memory_db
-from memory.jobs import process_pending_jobs
-from memory.service import enqueue_memory_update, load_memory_context
+from memory.jobs.main import process_pending_jobs
+from memory.llm import _resolve_memory_llm
+from memory.schemas import MemoryEvaluation, ConceptUpsert, ConceptEdgeUpsert, ConceptStateDelta
+from memory.service.main import enqueue_memory_update, load_memory_context
+
+
+def _make_evaluation(**overrides) -> MemoryEvaluation:
+    defaults = dict(
+        skip=False,
+        observations=["Learner struggles with sign flipping in quadratic formula"],
+        concept_upserts=[ConceptUpsert(concept_key="quadratic_formula", display_name="Quadratic Formula", aliases=[])],
+        concept_edges=[],
+        concept_state_deltas=[ConceptStateDelta(concept_key="quadratic_formula", mastery=0.3, confidence=0.8)],
+        trait_updates={},
+        updated_summary="Learner has difficulty with sign tracking in the quadratic formula.",
+    )
+    return MemoryEvaluation(**{**defaults, **overrides})
 
 
 def test_memory_worker_processes_pending_jobs(tmp_path, monkeypatch) -> None:
@@ -13,7 +26,7 @@ def test_memory_worker_processes_pending_jobs(tmp_path, monkeypatch) -> None:
     memory_db.init_db(memory_db_path)
     monkeypatch.setattr("memory.config.DEFAULT_MEMORY_DB_PATH", memory_db_path)
 
-    job_id = enqueue_memory_update(
+    decision = enqueue_memory_update(
         user_id=11,
         subject_id=7,
         chat_id=99,
@@ -25,8 +38,13 @@ def test_memory_worker_processes_pending_jobs(tmp_path, monkeypatch) -> None:
             ],
         },
     )
+    job_id = decision.job_id
+    assert decision.enqueued
 
-    result = process_pending_jobs(batch_size=5)
+    mock_eval = _make_evaluation()
+
+    with patch("memory.jobs.main.evaluate_memory", new=AsyncMock(return_value=mock_eval)):
+        result = process_pending_jobs(batch_size=5)
 
     assert result.claimed == 1
     assert result.done == 1
@@ -52,23 +70,75 @@ def test_memory_worker_processes_pending_jobs(tmp_path, monkeypatch) -> None:
         ).fetchone()
         assert obs is not None
         assert obs["source"] == "memory_worker"
-        assert "Learner said" in obs["observation"]
+        assert obs["observation"] == "Learner struggles with sign flipping in quadratic formula"
 
         version = conn.execute(
             """
-            SELECT mv.version, mv.summary
-            FROM memory_current mc
-            JOIN memory_versions mv ON mv.id = mc.version_id
-            WHERE mc.user_id = ? AND mc.subject_id = ?
+            SELECT summary
+            FROM memory_summary
+            WHERE user_id = ? AND subject_id = ?
             """,
             (11, 7),
         ).fetchone()
         assert version is not None
-        assert version["version"] == 1
-        assert "Recent learner observations" in version["summary"]
+        assert version["summary"] == "Learner has difficulty with sign tracking in the quadratic formula."
+
+        concept = conn.execute(
+            "SELECT id FROM concepts WHERE subject_id = ? AND concept_key = ?",
+            (7, "quadratic_formula"),
+        ).fetchone()
+        assert concept is not None
+
+        state = conn.execute(
+            "SELECT mastery, confidence FROM learner_concept_state WHERE user_id = ? AND concept_id = ?",
+            (11, concept["id"]),
+        ).fetchone()
+        assert state is not None
+        assert abs(state["mastery"] - 0.3) < 0.001
 
     context = load_memory_context(user_id=11, subject_id=7)
-    assert "Recent learner observations" in context
+    assert "quadratic" in context.rendered.lower()
+
+
+def test_memory_worker_skip_does_not_write(tmp_path, monkeypatch) -> None:
+    memory_db_path = tmp_path / "memory.db"
+    memory_db.init_db(memory_db_path)
+    monkeypatch.setattr("memory.config.DEFAULT_MEMORY_DB_PATH", memory_db_path)
+
+    decision = enqueue_memory_update(
+        user_id=5,
+        subject_id=3,
+        chat_id=None,
+        payload={
+            "trigger": "chat_turn",
+            "messages": [{"role": "user", "content": "ok thanks, I think I understand the concept now"}],
+        },
+    )
+    assert decision.enqueued
+
+    mock_eval = _make_evaluation(
+        skip=True,
+        observations=[],
+        concept_upserts=[],
+        concept_edges=[],
+        concept_state_deltas=[],
+        trait_updates={},
+        updated_summary="",
+    )
+
+    with patch("memory.jobs.main.evaluate_memory", new=AsyncMock(return_value=mock_eval)):
+        result = process_pending_jobs(batch_size=5)
+
+    assert result.claimed == 1
+    assert result.done == 1
+    assert result.failed == 0
+
+    with memory_db.get_conn(memory_db_path) as conn:
+        obs_count = conn.execute(
+            "SELECT COUNT(*) as n FROM learner_observations WHERE user_id = ? AND subject_id = ?",
+            (5, 3),
+        ).fetchone()["n"]
+        assert obs_count == 0
 
 
 def test_memory_worker_failure_is_isolated_from_next_jobs(tmp_path, monkeypatch) -> None:
@@ -85,17 +155,27 @@ def test_memory_worker_failure_is_isolated_from_next_jobs(tmp_path, monkeypatch)
             (1, 1, None, "{not-valid-json"),
         )
 
-    good_job_id = enqueue_memory_update(
+    decision = enqueue_memory_update(
         user_id=1,
-        subject_id=1,
+        subject_id=2,
         chat_id=None,
         payload={
             "trigger": "chat_turn",
             "messages": [{"role": "user", "content": "I understand factoring now"}],
         },
     )
+    good_job_id = decision.job_id
+    assert decision.enqueued
 
-    result = process_pending_jobs(batch_size=10)
+    mock_eval = _make_evaluation(
+        observations=["Learner understands factoring"],
+        concept_upserts=[],
+        concept_state_deltas=[],
+        updated_summary="Learner understands factoring.",
+    )
+
+    with patch("memory.jobs.main.evaluate_memory", new=AsyncMock(return_value=mock_eval)):
+        result = process_pending_jobs(batch_size=10)
 
     assert result.claimed == 2
     assert result.done == 1
@@ -115,63 +195,77 @@ def test_memory_worker_failure_is_isolated_from_next_jobs(tmp_path, monkeypatch)
     assert rows[1]["status"] == "done"
 
 
-def test_memory_worker_uses_llm_observation_when_config_exists(tmp_path, monkeypatch, setup_test_db):
-    """With a user LLM config present, the worker stores the model's observation."""
-    from app.db import get_conn as app_get_conn
-    from tests.mockers import seed_llm_config
-
-    with app_get_conn() as conn:
-        conn.execute("INSERT INTO users (email) VALUES ('llm@school.edu')")
-        row = conn.execute("SELECT id FROM users WHERE email = 'llm@school.edu'").fetchone()
-        user_id = row["id"]
-    seed_llm_config(user_id)
-
+def test_memory_worker_llm_error_marks_job_failed(tmp_path, monkeypatch) -> None:
     memory_db_path = tmp_path / "memory.db"
     memory_db.init_db(memory_db_path)
     monkeypatch.setattr("memory.config.DEFAULT_MEMORY_DB_PATH", memory_db_path)
 
-    job_id = enqueue_memory_update(
-        user_id=user_id,
-        subject_id=3,
+    decision = enqueue_memory_update(
+        user_id=2,
+        subject_id=4,
         chat_id=None,
-        payload={
-            "trigger": "chat_turn",
-            "messages": [
-                {"role": "user", "content": "I keep confusing coefficients in factoring"},
-                {"role": "assistant", "content": "Rewrite ax^2 + bx + c and check signs"},
-            ],
-        },
+        payload={"trigger": "chat_turn", "messages": [{"role": "user", "content": "can you help me understand integration by parts?"}]},
     )
+    assert decision.enqueued
+    job_id = decision.job_id
 
-    async def _handler(request: httpx.Request) -> httpx.Response:
-        body = await request.aread()
-        req = json.loads(body) if body else {}
-        prompt = "".join(m["content"] for m in req.get("messages", []))
-        assert "factoring" in prompt, "memory LLM prompt should include the learner messages"
-        resp = {
-            "id": "cmpl",
-            "object": "chat.completion",
-            "model": "gpt-4",
-            "choices": [{"index": 0, "message": {"role": "assistant", "content": "Struggles with sign errors when factoring quadratics."}, "finish_reason": "stop"}],
-            "usage": {"prompt_tokens": 5, "completion_tokens": 4, "total_tokens": 9},
-        }
-        return httpx.Response(200, json=resp)
-
-    transport = httpx.MockTransport(_handler)
-    mock_client = httpx.AsyncClient(transport=transport)
-    with patch(
-        "langchain_openai.chat_models.base._get_default_async_httpx_client",
-        return_value=mock_client,
-    ):
+    with patch("memory.jobs.main.evaluate_memory", new=AsyncMock(side_effect=RuntimeError("LLM timeout"))):
         result = process_pending_jobs(batch_size=5)
 
     assert result.claimed == 1
-    assert result.done == 1
+    assert result.done == 0
+    assert result.failed == 1
 
     with memory_db.get_conn(memory_db_path) as conn:
-        obs = conn.execute(
-            "SELECT observation, source FROM learner_observations WHERE user_id = ? AND subject_id = ?",
-            (user_id, 3),
+        row = conn.execute(
+            "SELECT status, payload_json FROM memory_update_jobs WHERE id = ?",
+            (job_id,),
         ).fetchone()
-    assert obs["source"] == "memory_worker"
-    assert obs["observation"] == "Struggles with sign errors when factoring quadratics."
+        assert row["status"] == "failed"
+        payload = json.loads(row["payload_json"])
+        assert "LLM timeout" in payload["worker_error"]
+
+
+# --- per-user LLM config resolution ---
+
+
+def test_resolve_memory_llm_with_user_config(seed) -> None:
+    from app.db import get_conn as app_get_conn
+    from tests.mockers import seed_llm_config
+
+    seed(users=["memllm@school.edu"])
+    with app_get_conn() as conn:
+        user_id = conn.execute(
+            "SELECT id FROM users WHERE email = ?", ("memllm@school.edu",)
+        ).fetchone()["id"]
+    seed_llm_config(user_id)
+
+    base_url, api_key, model = _resolve_memory_llm(user_id) or ("", "", "")
+    assert base_url == "https://api.openai.com/v1"
+    assert api_key == "sk-test-key"
+    assert model == "gpt-4"
+
+
+def test_resolve_memory_llm_without_config_returns_none(seed) -> None:
+    seed(users=["noconfig@school.edu"])
+    from app.db import get_conn as app_get_conn
+
+    with app_get_conn() as conn:
+        user_id = conn.execute(
+            "SELECT id FROM users WHERE email = ?", ("noconfig@school.edu",)
+        ).fetchone()["id"]
+    assert _resolve_memory_llm(user_id) is None
+
+
+def test_resolve_memory_llm_with_empty_config_returns_none(seed) -> None:
+    from app.db import get_conn as app_get_conn
+    from app.llmconfig import store
+    from app.llmconfig.model import LLMConfig
+
+    seed(users=["emptycfg@school.edu"])
+    with app_get_conn() as conn:
+        user_id = conn.execute(
+            "SELECT id FROM users WHERE email = ?", ("emptycfg@school.edu",)
+        ).fetchone()["id"]
+    store.save_config(user_id, LLMConfig(triplets=[]))
+    assert _resolve_memory_llm(user_id) is None

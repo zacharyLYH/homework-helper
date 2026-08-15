@@ -3,6 +3,8 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     openrouter_model: str = "openrouter/free"
+    openrouter_api_key: str = ""
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     homework_alignment_threshold: float = 0.4
     host: str = "127.0.0.1"
