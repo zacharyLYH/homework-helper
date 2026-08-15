@@ -53,14 +53,8 @@ cd ..
 echo ""
 echo "--- Reset memory database ---"
 cd backend
-uv run python -c "
-from memory.config import REQUIRED_MEMORY_TABLES
-from memory.db import get_conn
-with get_conn() as conn:
-    for table in REQUIRED_MEMORY_TABLES:
-        conn.execute(f'DROP TABLE IF EXISTS {table}')
-"
-uv run python -c "from memory.db import init_db; init_db()"
+# memory-seed.sql drops all tables (FK-safe order), recreates the schema, and
+# inserts seed rows; python -m memory.seed runs init_db() itself.
 uv run python -m memory.seed
 cd ..
 
