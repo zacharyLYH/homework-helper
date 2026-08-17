@@ -268,15 +268,16 @@ def _do_enqueue_job(
     subject_id: int,
     chat_id: int | None,
     payload: MemoryUpdatePayload,
+    trace_id: str | None,
 ) -> EnqueueDecision:
     """Insert the job and return enqueue decision."""
     cur = conn.execute(
         """
         INSERT INTO memory_update_jobs (
-            user_id, subject_id, chat_id, status, payload_json, created_at, updated_at
-        ) VALUES (?, ?, ?, 'pending', ?, datetime('now'), datetime('now'))
+            user_id, subject_id, chat_id, trace_id, status, payload_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 'pending', ?, datetime('now'), datetime('now'))
         """,
-        (user_id, subject_id, chat_id, json.dumps(payload)),
+        (user_id, subject_id, chat_id, trace_id, json.dumps(payload)),
     )
 
     job_id = cur.lastrowid

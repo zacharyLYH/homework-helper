@@ -349,7 +349,7 @@ def _claim_next_pending_job() -> dict[str, Any] | None:
     with get_conn() as conn:
         row = conn.execute(
             """
-            SELECT id, user_id, subject_id, chat_id, payload_json
+            SELECT id, user_id, subject_id, chat_id, trace_id, payload_json
             FROM memory_update_jobs
             WHERE status = 'pending'
             ORDER BY created_at ASC, id ASC
@@ -376,6 +376,7 @@ def _claim_next_pending_job() -> dict[str, Any] | None:
             "user_id": int(row["user_id"]),
             "subject_id": int(row["subject_id"]),
             "chat_id": row["chat_id"],
+            "trace_id": row["trace_id"],
             "payload_json": row["payload_json"],
         }
 

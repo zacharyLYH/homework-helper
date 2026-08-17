@@ -85,6 +85,7 @@ CREATE TABLE memory_update_jobs (
     user_id INTEGER NOT NULL,
     subject_id INTEGER NOT NULL,
     chat_id INTEGER,
+    trace_id TEXT,
     status TEXT NOT NULL DEFAULT 'pending',
     payload_json TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),

@@ -35,6 +35,7 @@ from memory.service.utils import _log_retrieval_trace
 from memory.service.utils import _make_error_decision
 from memory.service.utils import _make_skip_decision
 from memory.service.utils import _render_memory_context
+from memory.structured_log_interface import get_enqueue_trace_id
 
 
 # ============================================================================
@@ -195,6 +196,8 @@ def enqueue_memory_update(
     Returns EnqueueDecision with status, optional job_id, and reason.
     All decisions are logged for observability.
     """
+    trace_id = get_enqueue_trace_id()
+
     # Free checks (in-memory)
     if user_id is None or subject_id is None:
         return _make_skip_decision(user_id, subject_id, "skipped_missing_scope")
@@ -218,7 +221,7 @@ def enqueue_memory_update(
                 return _make_skip_decision(user_id, subject_id, "skipped_rate_limit")
 
             # Enqueue
-            return _do_enqueue_job(conn, user_id, subject_id, chat_id, payload)
+            return _do_enqueue_job(conn, user_id, subject_id, chat_id, payload, trace_id)
 
     except sqlite3.Error as e:
         return _make_error_decision(user_id, subject_id, str(e))

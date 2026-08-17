@@ -23,6 +23,7 @@ from memory.jobs.utils import _set_job_done
 from memory.jobs.utils import _set_job_failed
 from memory.jobs.utils import _validate_semantic
 from memory.llm import evaluate_memory
+from memory.structured_log_interface import memory_job_log_context
 
 log = get_logger(__name__)
 
@@ -105,7 +106,8 @@ def process_pending_jobs(
             job_id = int(job["id"])
 
             try:
-                success = _process_claimed_job(job, _loop)
+                with memory_job_log_context(job.get("trace_id")):
+                    success = _process_claimed_job(job, _loop)
             except Exception as exc:  # pragma: no cover - defensive guard
                 log.error("Unexpected error in worker job_id=%s: %s", job_id, exc)
                 _set_job_failed(job_id, payload_json=job.get("payload_json"), error=str(exc))
@@ -168,6 +170,9 @@ def main() -> int:
     parser = _build_arg_parser()
     args = parser.parse_args()
 
+    from app.db import init_debug_db
+
+    init_debug_db()
     db_path = init_db()
     log.info(f"Memory worker schema ready: {db_path}")
 
