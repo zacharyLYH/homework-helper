@@ -12,15 +12,35 @@ from app.alignment import check_alignment
 from app.config import settings
 from app.constants import (
     END_LABEL,
+    MEMORY_CONTEXT_INJECTED_EVENT,
+    MEMORY_DISABLED_REASON,
+    MEMORY_LOADER_DONE_EVENT,
+    MEMORY_LOADER_ERROR_EVENT,
+    MEMORY_LOADER_SKIP_EVENT,
+    MEMORY_UPDATE_TRIGGER_CHAT_TURN,
+    MEMORY_UPDATER_ERROR_EVENT,
+    MEMORY_UPDATER_OUTCOME_EVENT,
+    MEMORY_UPDATER_SKIP_EVENT,
+    MESSAGE_ROLE_AI,
+    MESSAGE_ROLE_HUMAN,
+    MISSING_SCOPE_REASON,
     NODE_AGENT,
     NODE_ALIGNMENT_CHECK,
+    NODE_MEMORY_LOADER,
+    NODE_MEMORY_UPDATER,
     NODE_TOOL_EXECUTOR,
     STATE_ALIGNMENT_SCORE,
     STATE_CALLED_TOOLS,
+    STATE_CHAT_ID,
+    STATE_MEMORY_CONTEXT,
+    STATE_MEMORY_ENABLED,
+    STATE_MEMORY_LOADED,
     STATE_MESSAGES,
     STATE_PENDING_TOOL_CALLS,
     STATE_PENDING_TOOL_CALLS_DATA,
     STATE_REJECTED_REASON,
+    STATE_SUBJECT_ID,
+    STATE_USER_ID,
 )
 from app.llmconfig import router as llm_router
 from app.logging import get_logger, structured_log
@@ -90,25 +110,25 @@ def _stringify_content(content: object) -> str:
 
 
 def memory_loader(state: GraphState) -> dict:
-    if not state.get("memory_enabled", False):
+    if not state.get(STATE_MEMORY_ENABLED, False):
         log.info("Memory loader skipped: memory is disabled")
-        structured_log("memory_loader_skip", reason="memory_disabled")
-        return {"memory_context": "", "memory_loaded": False}
+        structured_log(MEMORY_LOADER_SKIP_EVENT, reason=MEMORY_DISABLED_REASON)
+        return {STATE_MEMORY_CONTEXT: "", STATE_MEMORY_LOADED: False}
 
-    user_id = state.get("user_id")
-    subject_id = state.get("subject_id")
+    user_id = state.get(STATE_USER_ID)
+    subject_id = state.get(STATE_SUBJECT_ID)
     if user_id is None or subject_id is None:
         log.info("Memory loader skipped: missing user or subject scope")
-        structured_log("memory_loader_skip", reason="missing_scope")
-        return {"memory_context": "", "memory_loaded": False}
+        structured_log(MEMORY_LOADER_SKIP_EVENT, reason=MISSING_SCOPE_REASON)
+        return {STATE_MEMORY_CONTEXT: "", STATE_MEMORY_LOADED: False}
 
     log.info("Memory loader started: user_id=%s subject_id=%s", user_id, subject_id)
     try:
         context = load_memory_context(user_id=user_id, subject_id=subject_id)
     except Exception as exc:  # pragma: no cover - defensive guard
         log.warning("Memory loader failed, continuing without memory: %s", exc)
-        structured_log("memory_loader_error", error=str(exc))
-        return {"memory_context": "", "memory_loaded": False}
+        structured_log(MEMORY_LOADER_ERROR_EVENT, error=str(exc))
+        return {STATE_MEMORY_CONTEXT: "", STATE_MEMORY_LOADED: False}
 
     log.info(
         "Memory loader completed: loaded=%s context_chars=%d",
@@ -117,25 +137,25 @@ def memory_loader(state: GraphState) -> dict:
     )
 
     structured_log(
-        "memory_loader_done",
+        MEMORY_LOADER_DONE_EVENT,
         has_context=not context.is_empty,
         user_id=user_id,
         subject_id=subject_id,
     )
-    return {"memory_context": context.rendered, "memory_loaded": not context.is_empty}
+    return {STATE_MEMORY_CONTEXT: context.rendered, STATE_MEMORY_LOADED: not context.is_empty}
 
 
 def memory_updater(state: GraphState) -> dict:
-    if not state.get("memory_enabled", False):
+    if not state.get(STATE_MEMORY_ENABLED, False):
         log.info("Memory updater skipped: memory is disabled")
-        structured_log("memory_updater_skip", reason="memory_disabled")
+        structured_log(MEMORY_UPDATER_SKIP_EVENT, reason=MEMORY_DISABLED_REASON)
         return {}
 
-    user_id = state.get("user_id")
-    subject_id = state.get("subject_id")
+    user_id = state.get(STATE_USER_ID)
+    subject_id = state.get(STATE_SUBJECT_ID)
     if user_id is None or subject_id is None:
         log.info("Memory updater skipped: missing user or subject scope")
-        structured_log("memory_updater_skip", reason="missing_scope")
+        structured_log(MEMORY_UPDATER_SKIP_EVENT, reason=MISSING_SCOPE_REASON)
         return {}
 
     log.info("Memory updater started: user_id=%s subject_id=%s", user_id, subject_id)
@@ -149,19 +169,19 @@ def memory_updater(state: GraphState) -> dict:
             content = _stringify_content(getattr(msg, "content", ""))
             if content.strip():
                 last_by_role[role] = content
-        if "human" in last_by_role and "ai" in last_by_role:
+        if MESSAGE_ROLE_HUMAN in last_by_role and MESSAGE_ROLE_AI in last_by_role:
             break
 
     snippet: list[dict[str, str]] = [
         {"role": role, "content": last_by_role[role][:400]}
-        for role in ("human", "ai")
+        for role in (MESSAGE_ROLE_HUMAN, MESSAGE_ROLE_AI)
         if role in last_by_role
     ]
 
     payload: MemoryUpdatePayload = {
-        "trigger": "chat_turn",
-        "memory_loaded": state.get("memory_loaded", False),
-        "memory_context": state.get("memory_context", "")[:2000],
+        "trigger": MEMORY_UPDATE_TRIGGER_CHAT_TURN,
+        STATE_MEMORY_LOADED: state.get(STATE_MEMORY_LOADED, False),
+        STATE_MEMORY_CONTEXT: state.get(STATE_MEMORY_CONTEXT, "")[:2000],
         "messages": snippet,
     }
 
@@ -169,22 +189,22 @@ def memory_updater(state: GraphState) -> dict:
         decision = enqueue_memory_update(
             user_id=user_id,
             subject_id=subject_id,
-            chat_id=state.get("chat_id"),
+            chat_id=state.get(STATE_CHAT_ID),
             payload=payload,
         )
     except Exception as exc:  # pragma: no cover - defensive guard
         log.warning("Memory updater failed, skipping update: %s", exc)
-        structured_log("memory_updater_error", error=str(exc))
+        structured_log(MEMORY_UPDATER_ERROR_EVENT, error=str(exc))
         return {}
 
     log.info("Memory updater outcome: enqueued=%s reason=%s job_id=%s", decision.enqueued, decision.reason, decision.job_id)
 
     structured_log(
-        "memory_updater_outcome",
+        MEMORY_UPDATER_OUTCOME_EVENT,
         enqueued=decision.enqueued,
         reason=decision.reason,
         job_id=decision.job_id,
-        chat_id=state.get("chat_id"),
+        chat_id=state.get(STATE_CHAT_ID),
         user_id=user_id,
         subject_id=subject_id,
     )
@@ -281,8 +301,8 @@ def route_after_alignment(state: GraphState) -> Literal["memory_loader", "end"]:
     if state.get(STATE_REJECTED_REASON, ""):
         structured_log("graph_route", destination="end", reason="alignment_rejected")
         return END_LABEL
-    structured_log("graph_route", destination="memory_loader", reason="alignment_ok")
-    return "memory_loader"
+    structured_log("graph_route", destination=NODE_MEMORY_LOADER, reason="alignment_ok")
+    return NODE_MEMORY_LOADER
 
 
 # --- Agent node ---
@@ -295,11 +315,11 @@ async def _node_with_prompt(
     config: RunnableConfig | None = None,
 ) -> AsyncGenerator[dict, None]:
     messages = state["messages"]
-    memory_context = state.get("memory_context", "")
-    memory_loaded = bool(state.get("memory_loaded", False))
+    memory_context = state.get(STATE_MEMORY_CONTEXT, "")
+    memory_loaded = bool(state.get(STATE_MEMORY_LOADED, False))
 
     messages = state[STATE_MESSAGES]
-    user_id = state.get("user_id")
+    user_id = state.get(STATE_USER_ID)
     if system_prompt:
         final_prompt = system_prompt
         if memory_loaded and memory_context:
@@ -313,7 +333,7 @@ async def _node_with_prompt(
                 len(memory_context),
             )
             structured_log(
-                "memory_context_injected",
+                MEMORY_CONTEXT_INJECTED_EVENT,
                 memory_loaded=True,
                 context_chars=len(memory_context),
             )
@@ -322,7 +342,7 @@ async def _node_with_prompt(
                 "Memory context not injected into agent prompt: memory_loaded=%s",
                 memory_loaded,
             )
-            structured_log("memory_context_injected", memory_loaded=False, context_chars=0)
+            structured_log(MEMORY_CONTEXT_INJECTED_EVENT, memory_loaded=False, context_chars=0)
 
         messages = [SystemMessage(content=final_prompt)] + messages
     async for chunk in llm_router.stream(
@@ -406,12 +426,12 @@ def route_after_agent(state: GraphState) -> Literal["tool_executor", "memory_upd
         pending_data = state.get(STATE_PENDING_TOOL_CALLS_DATA, [])
         called: set[str] = set(state.get(STATE_CALLED_TOOLS, []))
         if pending_data and all(_is_repeat(tc["name"], tc["args"], called) for tc in pending_data):
-            structured_log("graph_route", destination="memory_updater", reason="all_tools_already_called", pending_calls=state["pending_tool_calls"])
-            return "memory_updater"
+            structured_log("graph_route", destination=NODE_MEMORY_UPDATER, reason="all_tools_already_called", pending_calls=state["pending_tool_calls"])
+            return NODE_MEMORY_UPDATER
         structured_log("graph_route", destination="tool_executor", pending_calls=state[STATE_PENDING_TOOL_CALLS])
         return NODE_TOOL_EXECUTOR
     structured_log("graph_route", destination="end", pending_calls=0)
-    return "memory_updater"
+    return NODE_MEMORY_UPDATER
 
 
 # --- Graph builder ---
@@ -421,25 +441,25 @@ def build_graph() -> CompiledStateGraph:
     log.info("Building LangGraph state machine")
     graph_builder = StateGraph(GraphState)
 
-    graph_builder.add_node("memory_loader", memory_loader)
+    graph_builder.add_node(NODE_MEMORY_LOADER, memory_loader)
     graph_builder.add_node(NODE_ALIGNMENT_CHECK, alignment_check)
     graph_builder.add_node(NODE_AGENT, agent)
     graph_builder.add_node(NODE_TOOL_EXECUTOR, tool_executor)
-    graph_builder.add_node("memory_updater", memory_updater)
+    graph_builder.add_node(NODE_MEMORY_UPDATER, memory_updater)
 
     graph_builder.add_edge(START, NODE_ALIGNMENT_CHECK)
     graph_builder.add_conditional_edges(NODE_ALIGNMENT_CHECK, route_after_alignment, {
-        "memory_loader": "memory_loader",
+        NODE_MEMORY_LOADER: NODE_MEMORY_LOADER,
         END_LABEL: END,
     })
-    graph_builder.add_edge("memory_loader", NODE_AGENT)
+    graph_builder.add_edge(NODE_MEMORY_LOADER, NODE_AGENT)
     graph_builder.add_conditional_edges("agent", route_after_agent, {
         "tool_executor": "tool_executor",
-        "memory_updater": "memory_updater",
+        NODE_MEMORY_UPDATER: NODE_MEMORY_UPDATER,
         END_LABEL: END,
     })
     graph_builder.add_edge(NODE_TOOL_EXECUTOR, NODE_AGENT)
-    graph_builder.add_edge("memory_updater", END)
+    graph_builder.add_edge(NODE_MEMORY_UPDATER, END)
 
     from langgraph.checkpoint.memory import MemorySaver
     memory = MemorySaver()
