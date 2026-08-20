@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
@@ -18,6 +19,7 @@ from app.config import settings
 from app.logging import get_logger
 from memory.config import MEMORY_LLM_MODEL, MEMORY_LLM_TIMEOUT_SECONDS
 from memory.prompts import SYSTEM_PROMPT, render_user_prompt
+from memory.llm_schema import MemoryEvaluationPayload, make_response_format_schema
 from memory.schemas import (
     ConceptEdgeUpsert,
     ConceptStateDelta,
@@ -28,7 +30,9 @@ from memory.schemas import (
 
 log = get_logger(__name__)
 
-_ALLOWED_RELATIONS = frozenset({"prerequisite", "related"})
+
+def _make_response_format_schema() -> dict[str, Any]:
+    return make_response_format_schema()
 
 
 def _resolve_memory_llm(user_id: int | None) -> tuple[str, str, str] | None:
@@ -56,6 +60,12 @@ def _resolve_memory_llm(user_id: int | None) -> tuple[str, str, str] | None:
 
 
 def _make_llm(*, base_url: str, api_key: str, model: str) -> ChatOpenAI:
+    model_kwargs: dict[str, Any] = {
+        "response_format": _make_response_format_schema(),
+    }
+    if "openrouter.ai" in base_url:
+        model_kwargs["provider"] = {"require_parameters": True}
+
     return ChatOpenAI(
         base_url=base_url,
         api_key=SecretStr(api_key) if api_key else SecretStr(""),
@@ -63,75 +73,73 @@ def _make_llm(*, base_url: str, api_key: str, model: str) -> ChatOpenAI:
         temperature=0.0,
         # reasoning models burn most of the budget on internal thought; give headroom
         max_completion_tokens=4096,
-        model_kwargs={
-            "response_format": {"type": "json_object"},
-        },
+        model_kwargs=model_kwargs,
     )
 
 
-def _parse_evaluation(raw: str) -> MemoryEvaluation:
+def _content_to_data(content: Any) -> dict[str, Any]:
+    if isinstance(content, dict):
+        return content
+
+    if isinstance(content, str):
+        data = json.loads(content)
+        if not isinstance(data, dict):
+            raise ValueError("LLM response JSON must be an object")
+        return data
+
+    if isinstance(content, list):
+        text_parts: list[str] = []
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "text":
+                text_parts.append(str(part.get("text", "")))
+        if not text_parts:
+            raise ValueError("LLM response content list did not contain text parts")
+        data = json.loads("".join(text_parts))
+        if not isinstance(data, dict):
+            raise ValueError("LLM response JSON must be an object")
+        return data
+
+    raise TypeError(f"Unsupported LLM response content type: {type(content)!r}")
+
+
+def _parse_evaluation(content: Any) -> MemoryEvaluation:
     """Parse and structurally validate LLM JSON output into MemoryEvaluation.
 
     Raises ValueError / KeyError / json.JSONDecodeError on any structural problem.
     """
-    data: dict = json.loads(raw)
-
-    skip = bool(data.get("skip", False))
-    observations = [str(o) for o in data.get("observations", [])]
-
-    concept_upserts = [
-        ConceptUpsert(
-            concept_key=str(c["concept_key"]),
-            display_name=str(c["display_name"]),
-            aliases=[str(a) for a in c.get("aliases", [])],
-        )
-        for c in data.get("concept_upserts", [])
-    ]
-
-    concept_edges: list[ConceptEdgeUpsert] = []
-    for e in data.get("concept_edges", []):
-        relation = str(e.get("relation", ""))
-        if relation not in _ALLOWED_RELATIONS:
-            raise ValueError(f"Invalid relation: {relation!r}")
-        weight = float(e["weight"])
-        if not 0.0 <= weight <= 1.0:
-            raise ValueError(f"Edge weight out of range: {weight}")
-        concept_edges.append(
-            ConceptEdgeUpsert(
-                from_concept_key=str(e["from_concept_key"]),
-                to_concept_key=str(e["to_concept_key"]),
-                relation=relation,
-                weight=weight,
-            )
-        )
-
-    concept_state_deltas: list[ConceptStateDelta] = []
-    for d in data.get("concept_state_deltas", []):
-        mastery = float(d["mastery"])
-        confidence = float(d["confidence"])
-        if not 0.0 <= mastery <= 1.0:
-            raise ValueError(f"Mastery out of range: {mastery}")
-        if not 0.0 <= confidence <= 1.0:
-            raise ValueError(f"Confidence out of range: {confidence}")
-        concept_state_deltas.append(
-            ConceptStateDelta(
-                concept_key=str(d["concept_key"]),
-                mastery=mastery,
-                confidence=confidence,
-            )
-        )
-
-    trait_updates = {str(k): str(v) for k, v in data.get("trait_updates", {}).items()}
-    updated_summary = str(data.get("updated_summary", ""))
+    data = _content_to_data(content)
+    parsed = MemoryEvaluationPayload.model_validate(data)
 
     return MemoryEvaluation(
-        skip=skip,
-        observations=observations,
-        concept_upserts=concept_upserts,
-        concept_edges=concept_edges,
-        concept_state_deltas=concept_state_deltas,
-        trait_updates=trait_updates,
-        updated_summary=updated_summary,
+        skip=parsed.skip,
+        observations=parsed.observations,
+        concept_upserts=[
+            ConceptUpsert(
+                concept_key=item.concept_key,
+                display_name=item.display_name,
+                aliases=item.aliases,
+            )
+            for item in parsed.concept_upserts
+        ],
+        concept_edges=[
+            ConceptEdgeUpsert(
+                from_concept_key=item.from_concept_key,
+                to_concept_key=item.to_concept_key,
+                relation=item.relation,
+                weight=float(item.weight),
+            )
+            for item in parsed.concept_edges
+        ],
+        concept_state_deltas=[
+            ConceptStateDelta(
+                concept_key=item.concept_key,
+                mastery=float(item.mastery),
+                confidence=float(item.confidence),
+            )
+            for item in parsed.concept_state_deltas
+        ],
+        trait_updates=parsed.trait_updates,
+        updated_summary=parsed.updated_summary,
     )
 
 
@@ -168,4 +176,4 @@ async def evaluate_memory(
 
     raw = str(response.content)
     log.info("Memory LLM response — raw=%r", raw[:3000])
-    return _parse_evaluation(raw)
+    return _parse_evaluation(response.content)
