@@ -59,3 +59,28 @@ def test_memory_runtime_enabled_when_schema_exists(tmp_path, monkeypatch):
 
     # Should not raise when memory is fully available.
     enforce_memory_runtime(status)
+
+
+def test_memory_runtime_reports_unreadable_db(tmp_path, monkeypatch):
+    db_path = tmp_path / "memory.db"
+    db_path.write_text("not a sqlite database")
+    monkeypatch.setattr("memory.config.DEFAULT_MEMORY_DB_PATH", db_path)
+
+    status = get_memory_runtime_status(memory_enabled=True, memory_strict_mode=False)
+
+    assert status.enabled is False
+    assert status.reason == "memory_db_unreadable"
+
+
+def test_memory_runtime_reports_missing_schema(tmp_path, monkeypatch):
+    db_path = tmp_path / "memory.db"
+    import sqlite3
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("CREATE TABLE unrelated (id INTEGER)")
+    monkeypatch.setattr("memory.config.DEFAULT_MEMORY_DB_PATH", db_path)
+
+    status = get_memory_runtime_status(memory_enabled=True, memory_strict_mode=False)
+
+    assert status.enabled is False
+    assert status.reason == "memory_schema_missing"

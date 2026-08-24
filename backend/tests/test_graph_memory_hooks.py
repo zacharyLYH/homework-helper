@@ -77,6 +77,28 @@ def test_memory_loader_loads_when_enabled(monkeypatch):
     assert out["memory_loaded"] is True
 
 
+def test_memory_loader_skips_when_scope_is_missing(monkeypatch):
+    monkeypatch.setattr(
+        "app.graph.load_memory_context",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("should not load")),
+    )
+
+    out = memory_loader({"memory_enabled": True, "user_id": None, "subject_id": 7})
+
+    assert out == {"memory_context": "", "memory_loaded": False}
+
+
+def test_memory_loader_continues_when_context_load_fails(monkeypatch):
+    monkeypatch.setattr(
+        "app.graph.load_memory_context",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("db unavailable")),
+    )
+
+    out = memory_loader({"memory_enabled": True, "user_id": 1, "subject_id": 7})
+
+    assert out == {"memory_context": "", "memory_loaded": False}
+
+
 def test_memory_updater_noop_when_disabled(monkeypatch):
     called = {"count": 0}
 
@@ -103,6 +125,31 @@ def test_memory_updater_noop_when_disabled(monkeypatch):
 
     assert out == {}
     assert called["count"] == 0
+
+
+def test_memory_updater_skips_when_scope_is_missing(monkeypatch):
+    monkeypatch.setattr(
+        "app.graph.enqueue_memory_update",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("should not enqueue")),
+    )
+
+    assert memory_updater({"memory_enabled": True, "user_id": 1, "subject_id": None}) == {}
+
+
+def test_memory_updater_continues_when_enqueue_fails(monkeypatch):
+    monkeypatch.setattr(
+        "app.graph.enqueue_memory_update",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("db unavailable")),
+    )
+
+    assert memory_updater(
+        {
+            "memory_enabled": True,
+            "user_id": 1,
+            "subject_id": 7,
+            "messages": [HumanMessage(content="a meaningful homework question")],
+        }
+    ) == {}
 
 
 def test_route_after_agent_preserves_tool_loop_and_exits_via_updater():

@@ -1,3 +1,5 @@
+import pytest
+
 from app.db import get_conn as get_app_conn
 from memory import db as memory_db
 from memory.config import REQUIRED_MEMORY_TABLES
@@ -75,3 +77,25 @@ def test_memory_db_crud_smoke(tmp_path) -> None:
         ).fetchone()
         assert remaining is not None
         assert remaining[0] == 0
+
+
+    def test_memory_connection_rolls_back_on_exception(tmp_path) -> None:
+        memory_db_path = tmp_path / "memory.db"
+        memory_db.init_db(memory_db_path)
+
+        with pytest.raises(RuntimeError):
+            with memory_db.get_conn(memory_db_path) as conn:
+                conn.execute(
+                    "INSERT INTO concepts (subject_id, concept_key, display_name) VALUES (1, 'temporary', 'Temporary')"
+                )
+                raise RuntimeError("abort")
+
+        with memory_db.get_conn(memory_db_path) as conn:
+            assert conn.execute("SELECT COUNT(*) FROM concepts").fetchone()[0] == 0
+
+
+    def test_memory_list_tables_returns_schema_tables(tmp_path) -> None:
+        memory_db_path = tmp_path / "memory.db"
+        memory_db.init_db(memory_db_path)
+
+        assert memory_db.list_tables(memory_db_path) >= set(memory_db.REQUIRED_MEMORY_TABLES)
