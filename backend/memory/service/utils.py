@@ -69,7 +69,12 @@ def _load_weak_concepts(
         ORDER BY lcs.mastery ASC
         LIMIT ?
         """,
-        (user_id, subject_id, MEMORY_WEAK_MASTERY_THRESHOLD, MEMORY_WEAK_CONCEPTS_LIMIT),
+        (
+            user_id,
+            subject_id,
+            MEMORY_WEAK_MASTERY_THRESHOLD,
+            MEMORY_WEAK_CONCEPTS_LIMIT,
+        ),
     ).fetchall()
 
     weak_concepts = [(str(row["display_name"]), float(row["mastery"])) for row in rows]
@@ -94,7 +99,7 @@ def _load_prerequisites(
     concept_ids_rows = conn.execute(
         f"""
         SELECT id, display_name FROM concepts
-        WHERE subject_id = ? AND display_name IN ({','.join('?' * len(weak_concept_names))})
+        WHERE subject_id = ? AND display_name IN ({",".join("?" * len(weak_concept_names))})
         """,
         [subject_id] + weak_concept_names,
     ).fetchall()
@@ -144,7 +149,9 @@ def _load_recent_observations(
         (user_id, subject_id, MEMORY_RECENT_OBS_LIMIT),
     ).fetchall()
 
-    observations = [str(row["observation"]).strip() for row in rows if row["observation"]]
+    observations = [
+        str(row["observation"]).strip() for row in rows if row["observation"]
+    ]
     context_parts["recent_observations"] = observations
     result_counts["obs_count"] = len(observations)
 
@@ -172,7 +179,9 @@ def _log_retrieval_trace(
         )
     except sqlite3.Error:
         # Silently fail; don't corrupt the read
-        structured_log("memory_trace_insert_error", user_id=user_id, subject_id=subject_id)
+        structured_log(
+            "memory_trace_insert_error", user_id=user_id, subject_id=subject_id
+        )
 
 
 def _render_memory_context(context_parts: dict[str, Any]) -> str:
@@ -195,7 +204,8 @@ def _render_memory_context(context_parts: dict[str, Any]) -> str:
 
     if context_parts["prerequisites"]:
         prereq_items = [
-            f"- {from_name} → {to_name}" for from_name, to_name in context_parts["prerequisites"]
+            f"- {from_name} → {to_name}"
+            for from_name, to_name in context_parts["prerequisites"]
         ]
         sections.append("Prerequisites to reinforce:\n" + "\n".join(prereq_items))
 
@@ -206,7 +216,9 @@ def _render_memory_context(context_parts: dict[str, Any]) -> str:
     return "\n\n".join(sections)
 
 
-def _make_skip_decision(user_id: int | None, subject_id: int | None, reason: str) -> EnqueueDecision:
+def _make_skip_decision(
+    user_id: int | None, subject_id: int | None, reason: str
+) -> EnqueueDecision:
     """Create and log a skip decision."""
     decision = EnqueueDecision(enqueued=False, job_id=None, reason=reason)
     structured_log(
@@ -219,7 +231,9 @@ def _make_skip_decision(user_id: int | None, subject_id: int | None, reason: str
     return decision
 
 
-def _make_error_decision(user_id: int | None, subject_id: int | None, error: str) -> EnqueueDecision:
+def _make_error_decision(
+    user_id: int | None, subject_id: int | None, error: str
+) -> EnqueueDecision:
     """Create and log an error decision."""
     decision = EnqueueDecision(enqueued=False, job_id=None, reason="db_error")
     structured_log(
@@ -249,7 +263,9 @@ def _has_pending_job(conn: sqlite3.Connection, user_id: int, subject_id: int) ->
     return row is not None
 
 
-def _exceeds_rate_limit(conn: sqlite3.Connection, user_id: int, subject_id: int) -> bool:
+def _exceeds_rate_limit(
+    conn: sqlite3.Connection, user_id: int, subject_id: int
+) -> bool:
     """Check if the job count for this scope exceeds the hourly limit."""
     row = conn.execute(
         """

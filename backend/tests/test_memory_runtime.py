@@ -17,7 +17,9 @@ def test_memory_runtime_disabled_by_default(tmp_path, monkeypatch):
 
 
 def test_memory_runtime_missing_db_auto_disables_when_not_strict(tmp_path, monkeypatch):
-    monkeypatch.setattr("memory.config.DEFAULT_MEMORY_DB_PATH", tmp_path / "missing-memory.db")
+    monkeypatch.setattr(
+        "memory.config.DEFAULT_MEMORY_DB_PATH", tmp_path / "missing-memory.db"
+    )
     status = get_memory_runtime_status(
         memory_enabled=True,
         memory_strict_mode=False,
@@ -28,9 +30,10 @@ def test_memory_runtime_missing_db_auto_disables_when_not_strict(tmp_path, monke
     assert status.reason == "memory_db_missing"
 
 
-
 def test_memory_runtime_missing_db_raises_when_strict(tmp_path, monkeypatch):
-    monkeypatch.setattr("memory.config.DEFAULT_MEMORY_DB_PATH", tmp_path / "missing-memory.db")
+    monkeypatch.setattr(
+        "memory.config.DEFAULT_MEMORY_DB_PATH", tmp_path / "missing-memory.db"
+    )
     status = get_memory_runtime_status(
         memory_enabled=True,
         memory_strict_mode=True,

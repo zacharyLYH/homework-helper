@@ -28,7 +28,9 @@ def _graph_state(message: str, user_id: int = 1) -> dict:
 
 def test_alignment_allows_homework_request():
     """A homework request scores above threshold against the real model."""
-    allowed, score, reason = alignment.check_alignment("help me solve this calculus problem")
+    allowed, score, reason = alignment.check_alignment(
+        "help me solve this calculus problem"
+    )
 
     assert allowed is True
     assert score >= settings.homework_alignment_threshold
@@ -44,7 +46,9 @@ def test_alignment_rejects_off_topic_request():
 
 
 def test_alignment_on_topic_scores_higher_than_off_topic():
-    _, on_topic_score, _ = alignment.check_alignment("explain how to factor this quadratic equation")
+    _, on_topic_score, _ = alignment.check_alignment(
+        "explain how to factor this quadratic equation"
+    )
     _, off_topic_score, _ = alignment.check_alignment("recommend a good movie")
 
     assert on_topic_score > off_topic_score
@@ -93,7 +97,9 @@ async def test_graph_aligned_reaches_agent(setup_test_db):
 
     with get_conn() as conn:
         conn.execute("INSERT INTO users (email) VALUES ('alice@school.edu')")
-        row = conn.execute("SELECT id FROM users WHERE email = 'alice@school.edu'").fetchone()
+        row = conn.execute(
+            "SELECT id FROM users WHERE email = 'alice@school.edu'"
+        ).fetchone()
     user_id = row["id"]
     seed_llm_config(user_id)
 

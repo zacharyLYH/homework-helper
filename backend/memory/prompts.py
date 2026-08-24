@@ -28,7 +28,10 @@ Return JSON matching this schema exactly:
 
 def render_user_prompt(*, current_state: MemoryEvaluationInput) -> str:
     weak = (
-        ", ".join(f"{name} ({mastery:.2f})" for name, mastery in current_state.current_weak_concepts)
+        ", ".join(
+            f"{name} ({mastery:.2f})"
+            for name, mastery in current_state.current_weak_concepts
+        )
         or "none"
     )
     traits = (

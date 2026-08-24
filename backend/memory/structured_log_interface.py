@@ -19,7 +19,9 @@ class MemoryJobLogContext:
     def __init__(self, trace_id: str | None) -> None:
         self._trace_id = trace_id
         self._logger: structured_log_module.StructuredLogger | None = None
-        self._token: cv.Token[structured_log_module.StructuredLogger | None] | None = None
+        self._token: cv.Token[structured_log_module.StructuredLogger | None] | None = (
+            None
+        )
 
     def __enter__(self) -> None:
         logger = structured_log_module.StructuredLogger(should_commit=True)

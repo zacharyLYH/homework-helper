@@ -137,7 +137,9 @@ def load_memory_context(*, user_id: int, subject_id: int) -> MemoryContext:
             _load_traits(conn, user_id, subject_id, context_parts)
             _load_weak_concepts(conn, user_id, subject_id, context_parts, result_counts)
             _load_prerequisites(conn, user_id, subject_id, context_parts)
-            _load_recent_observations(conn, user_id, subject_id, context_parts, result_counts)
+            _load_recent_observations(
+                conn, user_id, subject_id, context_parts, result_counts
+            )
             _log_retrieval_trace(conn, user_id, subject_id, result_counts)
 
     except sqlite3.Error as e:
@@ -221,7 +223,9 @@ def enqueue_memory_update(
                 return _make_skip_decision(user_id, subject_id, "skipped_rate_limit")
 
             # Enqueue
-            return _do_enqueue_job(conn, user_id, subject_id, chat_id, payload, trace_id)
+            return _do_enqueue_job(
+                conn, user_id, subject_id, chat_id, payload, trace_id
+            )
 
     except sqlite3.Error as e:
         return _make_error_decision(user_id, subject_id, str(e))

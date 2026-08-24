@@ -45,13 +45,17 @@ def _process_claimed_job(job: dict, loop: asyncio.AbstractEventLoop) -> bool:
     subject_id = int(job["subject_id"])
 
     t0 = time.monotonic()
-    structured_log("memory_worker_llm_start", job_id=job_id, user_id=user_id, subject_id=subject_id)
+    structured_log(
+        "memory_worker_llm_start", job_id=job_id, user_id=user_id, subject_id=subject_id
+    )
 
     try:
         payload = _parse_payload(job.get("payload_json"))
         current_state = _load_current_state(user_id, subject_id, payload)
 
-        evaluation = loop.run_until_complete(evaluate_memory(current_state=current_state))
+        evaluation = loop.run_until_complete(
+            evaluate_memory(current_state=current_state)
+        )
         evaluation = _validate_semantic(evaluation, job_id=job_id)
 
         latency_ms = int((time.monotonic() - t0) * 1000)
@@ -110,7 +114,9 @@ def process_pending_jobs(
                     success = _process_claimed_job(job, _loop)
             except Exception as exc:  # pragma: no cover - defensive guard
                 log.error("Unexpected error in worker job_id=%s: %s", job_id, exc)
-                _set_job_failed(job_id, payload_json=job.get("payload_json"), error=str(exc))
+                _set_job_failed(
+                    job_id, payload_json=job.get("payload_json"), error=str(exc)
+                )
                 failed += 1
                 continue
 

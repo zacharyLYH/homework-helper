@@ -6,7 +6,12 @@ from app.db import get_debug_conn
 from memory import db as memory_db
 from memory.jobs.main import process_pending_jobs
 from memory.llm import _resolve_memory_llm
-from memory.schemas import MemoryEvaluation, ConceptUpsert, ConceptEdgeUpsert, ConceptStateDelta
+from memory.schemas import (
+    MemoryEvaluation,
+    ConceptUpsert,
+    ConceptEdgeUpsert,
+    ConceptStateDelta,
+)
 from memory.service.main import enqueue_memory_update, load_memory_context
 from shared.schemas import MemoryUpdatePayload
 
@@ -15,9 +20,19 @@ def _make_evaluation(**overrides) -> MemoryEvaluation:
     defaults = dict(
         skip=False,
         observations=["Learner struggles with sign flipping in quadratic formula"],
-        concept_upserts=[ConceptUpsert(concept_key="quadratic_formula", display_name="Quadratic Formula", aliases=[])],
+        concept_upserts=[
+            ConceptUpsert(
+                concept_key="quadratic_formula",
+                display_name="Quadratic Formula",
+                aliases=[],
+            )
+        ],
         concept_edges=[],
-        concept_state_deltas=[ConceptStateDelta(concept_key="quadratic_formula", mastery=0.3, confidence=0.8)],
+        concept_state_deltas=[
+            ConceptStateDelta(
+                concept_key="quadratic_formula", mastery=0.3, confidence=0.8
+            )
+        ],
         trait_updates={},
         updated_summary="Learner has difficulty with sign tracking in the quadratic formula.",
     )
@@ -44,7 +59,10 @@ def test_memory_worker_processes_pending_jobs(tmp_path, monkeypatch) -> None:
         chat_id=99,
         payload=_make_payload(
             [
-                {"role": "user", "content": "I keep flipping signs in quadratic formula"},
+                {
+                    "role": "user",
+                    "content": "I keep flipping signs in quadratic formula",
+                },
                 {"role": "assistant", "content": "Track b^2 - 4ac carefully"},
             ]
         ),
@@ -54,7 +72,9 @@ def test_memory_worker_processes_pending_jobs(tmp_path, monkeypatch) -> None:
 
     mock_eval = _make_evaluation()
 
-    with patch("memory.jobs.main.evaluate_memory", new=AsyncMock(return_value=mock_eval)):
+    with patch(
+        "memory.jobs.main.evaluate_memory", new=AsyncMock(return_value=mock_eval)
+    ):
         result = process_pending_jobs(batch_size=5)
 
     assert result.claimed == 1
@@ -81,7 +101,10 @@ def test_memory_worker_processes_pending_jobs(tmp_path, monkeypatch) -> None:
         ).fetchone()
         assert obs is not None
         assert obs["source"] == "memory_worker"
-        assert obs["observation"] == "Learner struggles with sign flipping in quadratic formula"
+        assert (
+            obs["observation"]
+            == "Learner struggles with sign flipping in quadratic formula"
+        )
 
         version = conn.execute(
             """
@@ -92,7 +115,10 @@ def test_memory_worker_processes_pending_jobs(tmp_path, monkeypatch) -> None:
             (11, 7),
         ).fetchone()
         assert version is not None
-        assert version["summary"] == "Learner has difficulty with sign tracking in the quadratic formula."
+        assert (
+            version["summary"]
+            == "Learner has difficulty with sign tracking in the quadratic formula."
+        )
 
         concept = conn.execute(
             "SELECT id FROM concepts WHERE subject_id = ? AND concept_key = ?",
@@ -121,7 +147,12 @@ def test_memory_worker_skip_does_not_write(tmp_path, monkeypatch) -> None:
         subject_id=3,
         chat_id=None,
         payload=_make_payload(
-            [{"role": "user", "content": "ok thanks, I think I understand the concept now"}]
+            [
+                {
+                    "role": "user",
+                    "content": "ok thanks, I think I understand the concept now",
+                }
+            ]
         ),
     )
     assert decision.enqueued
@@ -136,7 +167,9 @@ def test_memory_worker_skip_does_not_write(tmp_path, monkeypatch) -> None:
         updated_summary="",
     )
 
-    with patch("memory.jobs.main.evaluate_memory", new=AsyncMock(return_value=mock_eval)):
+    with patch(
+        "memory.jobs.main.evaluate_memory", new=AsyncMock(return_value=mock_eval)
+    ):
         result = process_pending_jobs(batch_size=5)
 
     assert result.claimed == 1
@@ -165,7 +198,12 @@ def test_memory_worker_preserves_enqueue_trace_id(tmp_path, monkeypatch) -> None
             subject_id=8,
             chat_id=None,
             payload=_make_payload(
-                [{"role": "user", "content": "I need help understanding the chain rule today"}]
+                [
+                    {
+                        "role": "user",
+                        "content": "I need help understanding the chain rule today",
+                    }
+                ]
             ),
         )
     finally:
@@ -179,7 +217,10 @@ def test_memory_worker_preserves_enqueue_trace_id(tmp_path, monkeypatch) -> None
         assert job is not None
         assert job["trace_id"] == "chat-request-trace"
 
-    with patch("memory.jobs.main.evaluate_memory", new=AsyncMock(return_value=_make_evaluation(skip=True))):
+    with patch(
+        "memory.jobs.main.evaluate_memory",
+        new=AsyncMock(return_value=_make_evaluation(skip=True)),
+    ):
         result = process_pending_jobs(batch_size=1)
     assert result.done == 1
 
@@ -191,7 +232,9 @@ def test_memory_worker_preserves_enqueue_trace_id(tmp_path, monkeypatch) -> None
     assert {row["_req_id"] for row in rows} == {"chat-request-trace"}
 
 
-def test_memory_worker_failure_is_isolated_from_next_jobs(tmp_path, monkeypatch) -> None:
+def test_memory_worker_failure_is_isolated_from_next_jobs(
+    tmp_path, monkeypatch
+) -> None:
     memory_db_path = tmp_path / "memory.db"
     memory_db.init_db(memory_db_path)
     monkeypatch.setattr("memory.config.DEFAULT_MEMORY_DB_PATH", memory_db_path)
@@ -223,7 +266,9 @@ def test_memory_worker_failure_is_isolated_from_next_jobs(tmp_path, monkeypatch)
         updated_summary="Learner understands factoring.",
     )
 
-    with patch("memory.jobs.main.evaluate_memory", new=AsyncMock(return_value=mock_eval)):
+    with patch(
+        "memory.jobs.main.evaluate_memory", new=AsyncMock(return_value=mock_eval)
+    ):
         result = process_pending_jobs(batch_size=10)
 
     assert result.claimed == 2
@@ -255,13 +300,21 @@ def test_memory_worker_llm_error_marks_job_failed(tmp_path, monkeypatch) -> None
         subject_id=4,
         chat_id=None,
         payload=_make_payload(
-            [{"role": "user", "content": "can you help me understand integration by parts?"}]
+            [
+                {
+                    "role": "user",
+                    "content": "can you help me understand integration by parts?",
+                }
+            ]
         ),
     )
     assert decision.enqueued
     job_id = decision.job_id
 
-    with patch("memory.jobs.main.evaluate_memory", new=AsyncMock(side_effect=RuntimeError("LLM timeout"))):
+    with patch(
+        "memory.jobs.main.evaluate_memory",
+        new=AsyncMock(side_effect=RuntimeError("LLM timeout")),
+    ):
         result = process_pending_jobs(batch_size=5)
 
     assert result.claimed == 1

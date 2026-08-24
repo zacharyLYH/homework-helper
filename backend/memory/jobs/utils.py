@@ -58,7 +58,9 @@ def _parse_payload(payload_json: str | None) -> MemoryUpdatePayload:
     )
 
 
-def _load_current_state(user_id: int, subject_id: int, payload: MemoryUpdatePayload) -> MemoryEvaluationInput:
+def _load_current_state(
+    user_id: int, subject_id: int, payload: MemoryUpdatePayload
+) -> MemoryEvaluationInput:
     """Read current memory state from DB and combine with payload messages."""
     messages: list[dict] = [
         {"role": str(m.get("role", "")), "content": str(m.get("content", ""))}
@@ -98,9 +100,16 @@ def _load_current_state(user_id: int, subject_id: int, payload: MemoryUpdatePayl
             ORDER BY lcs.mastery ASC
             LIMIT ?
             """,
-            (user_id, subject_id, MEMORY_WEAK_MASTERY_THRESHOLD, MEMORY_WEAK_CONCEPTS_LIMIT),
+            (
+                user_id,
+                subject_id,
+                MEMORY_WEAK_MASTERY_THRESHOLD,
+                MEMORY_WEAK_CONCEPTS_LIMIT,
+            ),
         ).fetchall()
-        current_weak_concepts = [(str(r["display_name"]), float(r["mastery"])) for r in weak_rows]
+        current_weak_concepts = [
+            (str(r["display_name"]), float(r["mastery"])) for r in weak_rows
+        ]
 
     return MemoryEvaluationInput(
         user_id=user_id,
@@ -112,7 +121,9 @@ def _load_current_state(user_id: int, subject_id: int, payload: MemoryUpdatePayl
     )
 
 
-def _validate_semantic(evaluation: MemoryEvaluation, *, job_id: int) -> MemoryEvaluation:
+def _validate_semantic(
+    evaluation: MemoryEvaluation, *, job_id: int
+) -> MemoryEvaluation:
     """Apply bounded caps; returns a new MemoryEvaluation with truncations applied."""
     obs = evaluation.observations
     if len(obs) > MEMORY_LLM_MAX_OBSERVATIONS:
@@ -186,7 +197,10 @@ def _apply_evaluation(
         for cu in evaluation.concept_upserts:
             nkey = normalize_concept_key(cu.concept_key)
             if not nkey:
-                log.warning("memory_worker: empty normalized key for %r, skipping", cu.concept_key)
+                log.warning(
+                    "memory_worker: empty normalized key for %r, skipping",
+                    cu.concept_key,
+                )
                 structured_log(
                     "memory_worker_key_normalized",
                     job_id=job_id,
@@ -280,7 +294,9 @@ def _apply_evaluation(
                     concept_id = int(row["id"])
                     key_to_id[nkey] = concept_id
             if concept_id is None:
-                log.warning("memory_worker: state delta for unknown concept %r, skipping", nkey)
+                log.warning(
+                    "memory_worker: state delta for unknown concept %r, skipping", nkey
+                )
                 continue
             conn.execute(
                 """

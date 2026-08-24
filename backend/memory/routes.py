@@ -35,7 +35,9 @@ def _get_owned_subject_id(subject_id: int, user_id: int) -> int:
     return subject.id
 
 
-@router.get("/api/memory/subjects/{subject_id}/context", response_model=MemoryContextResponse)
+@router.get(
+    "/api/memory/subjects/{subject_id}/context", response_model=MemoryContextResponse
+)
 async def get_memory_context(
     subject_id: int,
     request: Request,

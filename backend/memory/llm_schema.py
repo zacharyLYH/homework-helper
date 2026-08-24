@@ -47,7 +47,9 @@ class ConceptStateDeltaPayload(BaseModel):
     ]
     confidence: Annotated[
         float,
-        Field(ge=0.0, le=1.0, description="Confidence in mastery estimate from 0.0 to 1.0"),
+        Field(
+            ge=0.0, le=1.0, description="Confidence in mastery estimate from 0.0 to 1.0"
+        ),
     ]
 
 

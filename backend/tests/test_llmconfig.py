@@ -14,10 +14,23 @@ def _valid_ui() -> dict:
         "version": 1,
         "name": "My Config",
         "triplets": [
-            {"alias": "flash", "provider": "gemini", "model": "gemini-2.5-flash", "api_key": "sk-flash-secret"},
-            {"alias": "free", "provider": "openrouter", "model": "openrouter/free", "api_key": "sk-free-secret"},
+            {
+                "alias": "flash",
+                "provider": "gemini",
+                "model": "gemini-2.5-flash",
+                "api_key": "sk-flash-secret",
+            },
+            {
+                "alias": "free",
+                "provider": "openrouter",
+                "model": "openrouter/free",
+                "api_key": "sk-free-secret",
+            },
         ],
-        "chat": {"order": ["flash", "free"], "rules": [{"when": "rate_limit", "use": ["free"]}]},
+        "chat": {
+            "order": ["flash", "free"],
+            "rules": [{"when": "rate_limit", "use": ["free"]}],
+        },
         "memory": {"order": ["flash"], "rules": []},
     }
 
@@ -195,7 +208,12 @@ def test_apply_incoming_encrypts_changed_key() -> None:
 def test_apply_incoming_new_triplet_encrypts_raw_key() -> None:
     ui = _valid_ui()
     ui["triplets"].append(
-        {"alias": "pro", "provider": "gemini", "model": "gemini-2.5-pro", "api_key": "sk-pro"}
+        {
+            "alias": "pro",
+            "provider": "gemini",
+            "model": "gemini-2.5-pro",
+            "api_key": "sk-pro",
+        }
     )
     incoming = parser.apply_incoming(ui, None)
     assert security.decrypt(incoming.triplets[-1].api_key) == "sk-pro"

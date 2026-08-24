@@ -26,7 +26,7 @@ class ConceptEdgeUpsert:
 @dataclass(frozen=True)
 class ConceptStateDelta:
     concept_key: str
-    mastery: float     # absolute new value 0.0–1.0
+    mastery: float  # absolute new value 0.0–1.0
     confidence: float  # absolute new value 0.0–1.0
 
 
@@ -45,7 +45,7 @@ class MemoryEvaluation:
 class MemoryEvaluationInput:
     user_id: int
     subject_id: int
-    turn_snippet: list[dict]                    # last N messages (role + content)
+    turn_snippet: list[dict]  # last N messages (role + content)
     current_summary: str
     current_traits: dict[str, str]
     current_weak_concepts: list[tuple[str, float]]  # (display_name, mastery)

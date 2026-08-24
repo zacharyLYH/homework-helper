@@ -29,7 +29,9 @@ def _patch_transport(handler):
 
 
 def _sse(body: bytes) -> httpx.Response:
-    return httpx.Response(200, content=body, headers={"Content-Type": "text/event-stream"})
+    return httpx.Response(
+        200, content=body, headers={"Content-Type": "text/event-stream"}
+    )
 
 
 def _success_stream_body(content: str = "hello") -> bytes:
@@ -51,7 +53,13 @@ def _non_stream_body(content: str = "title") -> bytes:
             "id": "cmpl",
             "object": "chat.completion",
             "model": "gpt-4",
-            "choices": [{"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}],
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": content},
+                    "finish_reason": "stop",
+                }
+            ],
             "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5},
         }
     ).encode()
@@ -70,12 +78,18 @@ def test_classify_error_maps_429_to_rate_limit():
 
 
 def test_classify_error_maps_5xx_to_server_error():
-    exc = httpx.HTTPStatusError("boom", request=httpx.Request("POST", "http://x"), response=httpx.Response(503))
+    exc = httpx.HTTPStatusError(
+        "boom", request=httpx.Request("POST", "http://x"), response=httpx.Response(503)
+    )
     assert router.classify_error(exc) == "server_error"
 
 
 def test_classify_error_does_not_retry_client_errors():
-    exc = httpx.HTTPStatusError("bad request", request=httpx.Request("POST", "http://x"), response=httpx.Response(400))
+    exc = httpx.HTTPStatusError(
+        "bad request",
+        request=httpx.Request("POST", "http://x"),
+        response=httpx.Response(400),
+    )
     assert router.classify_error(exc) is None
 
 
@@ -131,7 +145,9 @@ async def test_stream_uses_chat_order(setup_test_db):
 
 async def test_stream_fails_over_to_next_alias_on_rate_limit(setup_test_db):
     user_id = _insert_user()
-    seed_llm_config(user_id, aliases=("primary", "fallback"), models=("gpt-4", "gpt-4o-mini"))
+    seed_llm_config(
+        user_id, aliases=("primary", "fallback"), models=("gpt-4", "gpt-4o-mini")
+    )
     calls = {"n": 0, "models": []}
 
     async def _handler(request: httpx.Request) -> httpx.Response:
@@ -157,7 +173,9 @@ async def test_stream_fails_over_to_next_alias_on_rate_limit(setup_test_db):
 
 async def test_stream_fails_over_on_server_error(setup_test_db):
     user_id = _insert_user()
-    seed_llm_config(user_id, aliases=("primary", "fallback"), models=("gpt-4", "gpt-4o-mini"))
+    seed_llm_config(
+        user_id, aliases=("primary", "fallback"), models=("gpt-4", "gpt-4o-mini")
+    )
     calls = []
 
     async def _handler(request: httpx.Request) -> httpx.Response:
@@ -180,7 +198,9 @@ async def test_stream_stops_on_non_retryable_error(setup_test_db):
     seed_llm_config(user_id, aliases=("primary", "fallback"))
     calls = []
 
-    async def _fake_stream_model(messages, *, base_url, api_key, model, bind_tools=None, config=None):
+    async def _fake_stream_model(
+        messages, *, base_url, api_key, model, bind_tools=None, config=None
+    ):
         calls.append(model)
         raise ValueError("invalid request")
         yield  # make this an async generator
@@ -202,8 +222,15 @@ async def test_stream_skips_unusable_key(setup_test_db):
     user_id = _insert_user()
     cfg = LLMConfig(
         triplets=[
-            Triplet(alias="bad", provider="openai", model="bad-model", api_key="not-a-token"),
-            Triplet(alias="good", provider="openai", model="good-model", api_key=security.encrypt("k")),
+            Triplet(
+                alias="bad", provider="openai", model="bad-model", api_key="not-a-token"
+            ),
+            Triplet(
+                alias="good",
+                provider="openai",
+                model="good-model",
+                api_key=security.encrypt("k"),
+            ),
         ],
         chat=OperationConfig(order=["bad", "good"]),
         memory=OperationConfig(order=["good"]),
@@ -229,7 +256,9 @@ async def test_stream_does_not_fail_over_after_output(setup_test_db, monkeypatch
     seed_llm_config(user_id, aliases=("primary", "fallback"))
     calls = []
 
-    async def _fake_stream_model(messages, *, base_url, api_key, model, bind_tools=None, config=None):
+    async def _fake_stream_model(
+        messages, *, base_url, api_key, model, bind_tools=None, config=None
+    ):
         calls.append(model)
         if model == "gpt-4":
             yield AIMessageChunk(content="partial")
@@ -253,9 +282,24 @@ async def test_stream_uses_rule_use_list_over_order(setup_test_db):
     user_id = _insert_user()
     cfg = LLMConfig(
         triplets=[
-            Triplet(alias="primary", provider="openai", model="gpt-4", api_key=security.encrypt("k")),
-            Triplet(alias="backup", provider="openai", model="gpt-4o-mini", api_key=security.encrypt("k")),
-            Triplet(alias="last", provider="openai", model="gpt-4o", api_key=security.encrypt("k")),
+            Triplet(
+                alias="primary",
+                provider="openai",
+                model="gpt-4",
+                api_key=security.encrypt("k"),
+            ),
+            Triplet(
+                alias="backup",
+                provider="openai",
+                model="gpt-4o-mini",
+                api_key=security.encrypt("k"),
+            ),
+            Triplet(
+                alias="last",
+                provider="openai",
+                model="gpt-4o",
+                api_key=security.encrypt("k"),
+            ),
         ],
         chat=OperationConfig(
             order=["primary", "last"],
@@ -317,7 +361,9 @@ async def test_generate_returns_text(setup_test_db):
         return httpx.Response(200, content=_non_stream_body("My Title"))
 
     with _patch_transport(_handler):
-        title = await router.generate("Make a title", user_id=user_id, operation="memory")
+        title = await router.generate(
+            "Make a title", user_id=user_id, operation="memory"
+        )
 
     assert title == "My Title"
 
@@ -335,7 +381,9 @@ async def test_generate_fails_over_to_next_alias(setup_test_db):
         return httpx.Response(200, content=_non_stream_body("fallback title"))
 
     with _patch_transport(_handler):
-        title = await router.generate("Make a title", user_id=user_id, operation="memory")
+        title = await router.generate(
+            "Make a title", user_id=user_id, operation="memory"
+        )
 
     assert title == "fallback title"
     assert calls == 2

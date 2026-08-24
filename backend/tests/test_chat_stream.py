@@ -19,7 +19,9 @@ def _make_token():
     from app.schemas import User as _User
 
     with _gc() as conn:
-        row = conn.execute("SELECT * FROM users WHERE email = 'alice@school.edu'").fetchone()
+        row = conn.execute(
+            "SELECT * FROM users WHERE email = 'alice@school.edu'"
+        ).fetchone()
     user = _User(id=row["id"], email=row["email"], created_at=row["created_at"])
     return create_access_token(user)
 
@@ -29,24 +31,30 @@ def _sse(data: str) -> bytes:
 
 
 def _chunk_event(content: str) -> str:
-    return json.dumps({
-        "id": "chatcmpl-mock",
-        "object": "chat.completion.chunk",
-        "created": 1677652288,
-        "model": "gpt-4",
-        "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": None}],
-    })
+    return json.dumps(
+        {
+            "id": "chatcmpl-mock",
+            "object": "chat.completion.chunk",
+            "created": 1677652288,
+            "model": "gpt-4",
+            "choices": [
+                {"index": 0, "delta": {"content": content}, "finish_reason": None}
+            ],
+        }
+    )
 
 
 def _finish_event() -> str:
-    return json.dumps({
-        "id": "chatcmpl-mock",
-        "object": "chat.completion.chunk",
-        "created": 1677652288,
-        "model": "gpt-4",
-        "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-        "usage": {"prompt_tokens": 15, "completion_tokens": 5, "total_tokens": 20},
-    })
+    return json.dumps(
+        {
+            "id": "chatcmpl-mock",
+            "object": "chat.completion.chunk",
+            "created": 1677652288,
+            "model": "gpt-4",
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 15, "completion_tokens": 5, "total_tokens": 20},
+        }
+    )
 
 
 def _sse_stream(words: list[str]) -> AsyncGenerator[bytes, None]:
@@ -79,7 +87,9 @@ async def _setup_chat_session(client) -> int:
             "SELECT code FROM verification_codes WHERE email = ?", ("alice@school.edu",)
         ).fetchone()
         code = row["code"]
-    await client.post("/api/auth/verify", json={"email": "alice@school.edu", "code": code})
+    await client.post(
+        "/api/auth/verify", json={"email": "alice@school.edu", "code": code}
+    )
     subject_resp = await client.post("/api/subjects", params={"name": "Math"})
     subject_id = subject_resp.json()["id"]
     chat_resp = await client.post("/api/chats", params={"subject_id": subject_id})
@@ -94,6 +104,7 @@ def auth_and_chat(client, seed):
             "SELECT id FROM users WHERE email = 'alice@school.edu'"
         ).fetchone()
     from tests.mockers import seed_llm_config
+
     seed_llm_config(row["id"])
 
     async def _setup():
@@ -243,7 +254,10 @@ async def test_chat_stream_second_message(client, auth_and_chat):
     with mock_llm(content="First reply"), mock_title_llm("Test Title"):
         resp1 = await client.post(
             "/api/chat/stream",
-            json={"message": "Help me with my first homework question", "chat_id": chat_id},
+            json={
+                "message": "Help me with my first homework question",
+                "chat_id": chat_id,
+            },
             headers={"Authorization": f"Bearer {token}"},
         )
     assert resp1.status_code == 200
@@ -251,7 +265,10 @@ async def test_chat_stream_second_message(client, auth_and_chat):
     with mock_llm(content="Second reply"), mock_title_llm():
         resp2 = await client.post(
             "/api/chat/stream",
-            json={"message": "Help me with my second homework question", "chat_id": chat_id},
+            json={
+                "message": "Help me with my second homework question",
+                "chat_id": chat_id,
+            },
             headers={"Authorization": f"Bearer {token}"},
         )
     assert resp2.status_code == 200
@@ -279,11 +296,15 @@ async def test_chat_stream_second_message(client, auth_and_chat):
 # ── alignment gate ───────────────────────────────────────────────────
 
 
-async def test_chat_stream_rejects_off_topic_message(client, auth_and_chat, monkeypatch):
+async def test_chat_stream_rejects_off_topic_message(
+    client, auth_and_chat, monkeypatch
+):
     chat_id = await auth_and_chat()
     token = _make_token()
 
-    monkeypatch.setattr("app.graph.check_alignment", lambda _text: (False, 0.01, "below_threshold"))
+    monkeypatch.setattr(
+        "app.graph.check_alignment", lambda _text: (False, 0.01, "below_threshold")
+    )
 
     resp = await client.post(
         "/api/chat/stream",
@@ -310,11 +331,15 @@ async def test_chat_stream_rejects_off_topic_message(client, auth_and_chat, monk
     assert msgs == [], "rejected bad data must not be persisted"
 
 
-async def test_chat_stream_rejection_is_structured_logged(client, auth_and_chat, monkeypatch):
+async def test_chat_stream_rejection_is_structured_logged(
+    client, auth_and_chat, monkeypatch
+):
     chat_id = await auth_and_chat()
     token = _make_token()
 
-    monkeypatch.setattr("app.graph.check_alignment", lambda _text: (False, 0.01, "below_threshold"))
+    monkeypatch.setattr(
+        "app.graph.check_alignment", lambda _text: (False, 0.01, "below_threshold")
+    )
 
     resp = await client.post(
         "/api/chat/stream",
@@ -381,37 +406,70 @@ async def test_title_and_graph_run_concurrently(client, auth_and_chat):
         body = await request.aread()
         req = json.loads(body) if body else {}
         if not req.get("stream", False):
-            return httpx.Response(200, json={
-                "id": "chatcmpl-mock",
-                "object": "chat.completion",
-                "created": 1677652288,
-                "model": "gpt-4",
-                "choices": [{"index": 0, "message": {"role": "assistant", "content": "Hello world"}, "finish_reason": "stop"}],
-                "usage": {"prompt_tokens": 15, "completion_tokens": 5, "total_tokens": 20},
-            })
+            return httpx.Response(
+                200,
+                json={
+                    "id": "chatcmpl-mock",
+                    "object": "chat.completion",
+                    "created": 1677652288,
+                    "model": "gpt-4",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {"role": "assistant", "content": "Hello world"},
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": 15,
+                        "completion_tokens": 5,
+                        "total_tokens": 20,
+                    },
+                },
+            )
 
         order.append("graph_started")
 
         async def _sse_body():
             for word in ["Hello ", "world"]:
-                yield _sse(json.dumps({
-                    "id": "chatcmpl-mock",
-                    "object": "chat.completion.chunk",
-                    "created": 1677652288,
-                    "model": "gpt-4",
-                    "choices": [{"index": 0, "delta": {"content": word}, "finish_reason": None}],
-                }))
-            yield _sse(json.dumps({
-                "id": "chatcmpl-mock",
-                "object": "chat.completion.chunk",
-                "created": 1677652288,
-                "model": "gpt-4",
-                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-                "usage": {"prompt_tokens": 15, "completion_tokens": 5, "total_tokens": 20},
-            }))
+                yield _sse(
+                    json.dumps(
+                        {
+                            "id": "chatcmpl-mock",
+                            "object": "chat.completion.chunk",
+                            "created": 1677652288,
+                            "model": "gpt-4",
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "delta": {"content": word},
+                                    "finish_reason": None,
+                                }
+                            ],
+                        }
+                    )
+                )
+            yield _sse(
+                json.dumps(
+                    {
+                        "id": "chatcmpl-mock",
+                        "object": "chat.completion.chunk",
+                        "created": 1677652288,
+                        "model": "gpt-4",
+                        "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                        "usage": {
+                            "prompt_tokens": 15,
+                            "completion_tokens": 5,
+                            "total_tokens": 20,
+                        },
+                    }
+                )
+            )
             yield b"data: [DONE]\n\n"
 
-        return httpx.Response(200, content=_sse_body(), headers={"Content-Type": "text/event-stream"})
+        return httpx.Response(
+            200, content=_sse_body(), headers={"Content-Type": "text/event-stream"}
+        )
 
     class _TitleMock:
         async def __call__(self, chat_id, user_id):
@@ -423,8 +481,13 @@ async def test_title_and_graph_run_concurrently(client, auth_and_chat):
     transport = httpx.MockTransport(_llm_handler)
     mock_client = httpx.AsyncClient(transport=transport)
 
-    with patch("langchain_openai.chat_models.base._get_default_async_httpx_client", return_value=mock_client), \
-         patch("app.routes.chat.generate_title_stream", _TitleMock()):
+    with (
+        patch(
+            "langchain_openai.chat_models.base._get_default_async_httpx_client",
+            return_value=mock_client,
+        ),
+        patch("app.routes.chat.generate_title_stream", _TitleMock()),
+    ):
         resp = await client.post(
             "/api/chat/stream",
             json={"message": "help me with my calculus homework", "chat_id": chat_id},
@@ -432,8 +495,9 @@ async def test_title_and_graph_run_concurrently(client, auth_and_chat):
         )
 
     assert resp.status_code == 200
-    assert order.index("graph_started") < order.index("title_ended"), \
+    assert order.index("graph_started") < order.index("title_ended"), (
         "graph must start while title generation is still in flight"
+    )
 
     lines = [l for l in resp.text.split("\n") if l.strip()]
     title_idx = next(i for i, l in enumerate(lines) if '"type": "title"' in l)
@@ -449,7 +513,10 @@ async def test_chat_stream_with_quote(client, auth_and_chat):
     chat_id = await auth_and_chat()
     token = _make_token()
 
-    with mock_llm(content="Here is the refined explanation."), mock_title_llm("Test Title"):
+    with (
+        mock_llm(content="Here is the refined explanation."),
+        mock_title_llm("Test Title"),
+    ):
         resp = await client.post(
             "/api/chat/stream",
             json={
@@ -491,7 +558,9 @@ async def test_chat_stream_with_quote(client, auth_and_chat):
     assert msgs[1]["quote"] is None
 
     with get_conn() as conn:
-        cols = [d["name"] for d in conn.execute("PRAGMA table_info(messages)").fetchall()]
+        cols = [
+            d["name"] for d in conn.execute("PRAGMA table_info(messages)").fetchall()
+        ]
     assert "quote" in cols, "quote should exist as a column in messages table"
 
 
@@ -503,7 +572,11 @@ async def test_chat_stream_quote_empty_string(client, auth_and_chat):
     with mock_llm(content="Hello"), mock_title_llm("Test Title"):
         resp = await client.post(
             "/api/chat/stream",
-            json={"message": "help me solve this calculus problem", "chat_id": chat_id, "quote": ""},
+            json={
+                "message": "help me solve this calculus problem",
+                "chat_id": chat_id,
+                "quote": "",
+            },
             headers={"Authorization": f"Bearer {token}"},
         )
 
@@ -546,7 +619,7 @@ async def test_build_lc_messages_appends_quote_without_history(setup_test_db):
     msgs = build(req)
     assert len(msgs) == 1
     assert msgs[0].type == "human"
-    assert "[quoting: \"Some text to quote.\"]" in msgs[0].content
+    assert '[quoting: "Some text to quote."]' in msgs[0].content
     assert msgs[0].content.startswith("what did you mean?")
 
 
@@ -625,7 +698,9 @@ async def test_chat_stream_no_config_streams_error(client, auth_and_chat_no_conf
     assert resp.status_code == 200
     errors = _error_lines(resp.text)
     assert errors, "stream must surface an error event when no LLM config exists"
-    assert "No LLM config set" in json.loads(errors[0].removeprefix("data: "))["content"]
+    assert (
+        "No LLM config set" in json.loads(errors[0].removeprefix("data: "))["content"]
+    )
 
 
 async def test_chat_stream_empty_config_streams_error(client, auth_and_chat_no_config):
@@ -645,7 +720,10 @@ async def test_chat_stream_empty_config_streams_error(client, auth_and_chat_no_c
     assert resp.status_code == 200
     errors = _error_lines(resp.text)
     assert errors
-    assert "No models configured" in json.loads(errors[0].removeprefix("data: "))["content"]
+    assert (
+        "No models configured"
+        in json.loads(errors[0].removeprefix("data: "))["content"]
+    )
 
 
 async def test_chat_stream_resolves_configured_models(client, auth_and_chat):
@@ -655,14 +733,26 @@ async def test_chat_stream_resolves_configured_models(client, auth_and_chat):
 
     chat_id = await auth_and_chat()
     token = _make_token()
-    await _save_config_for_alice(LLMConfig(
-        triplets=[
-            Triplet(alias="primary", provider="openai", model="gpt-4", api_key=security.encrypt("k")),
-            Triplet(alias="mem", provider="openai", model="gpt-4o-mini", api_key=security.encrypt("k")),
-        ],
-        chat=OperationConfig(order=["primary"], rules=[]),
-        memory=OperationConfig(order=["mem"], rules=[]),
-    ))
+    await _save_config_for_alice(
+        LLMConfig(
+            triplets=[
+                Triplet(
+                    alias="primary",
+                    provider="openai",
+                    model="gpt-4",
+                    api_key=security.encrypt("k"),
+                ),
+                Triplet(
+                    alias="mem",
+                    provider="openai",
+                    model="gpt-4o-mini",
+                    api_key=security.encrypt("k"),
+                ),
+            ],
+            chat=OperationConfig(order=["primary"], rules=[]),
+            memory=OperationConfig(order=["mem"], rules=[]),
+        )
+    )
 
     seen = {"chat": [], "memory": []}
 
@@ -673,19 +763,39 @@ async def test_chat_stream_resolves_configured_models(client, auth_and_chat):
         key = "chat" if is_stream else "memory"
         seen[key].append(req.get("model"))
         if key == "memory":
-            return httpx.Response(200, json={
-                "id": "chatcmpl-mock",
-                "object": "chat.completion",
-                "model": req.get("model"),
-                "choices": [{"index": 0, "message": {"role": "assistant", "content": "title"}, "finish_reason": "stop"}],
-                "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5},
-            })
-        return httpx.Response(200, content=_sse_stream(["Hello ", "world"]), headers={"Content-Type": "text/event-stream"})
+            return httpx.Response(
+                200,
+                json={
+                    "id": "chatcmpl-mock",
+                    "object": "chat.completion",
+                    "model": req.get("model"),
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {"role": "assistant", "content": "title"},
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": 3,
+                        "completion_tokens": 2,
+                        "total_tokens": 5,
+                    },
+                },
+            )
+        return httpx.Response(
+            200,
+            content=_sse_stream(["Hello ", "world"]),
+            headers={"Content-Type": "text/event-stream"},
+        )
 
     transport = httpx.MockTransport(_handler)
     mock_client = httpx.AsyncClient(transport=transport)
 
-    with patch("langchain_openai.chat_models.base._get_default_async_httpx_client", return_value=mock_client):
+    with patch(
+        "langchain_openai.chat_models.base._get_default_async_httpx_client",
+        return_value=mock_client,
+    ):
         resp = await client.post(
             "/api/chat/stream",
             json={"message": "help me with my calculus homework", "chat_id": chat_id},
@@ -693,8 +803,12 @@ async def test_chat_stream_resolves_configured_models(client, auth_and_chat):
         )
 
     assert seen["chat"] == ["gpt-4"], "chat op must resolve to its configured model"
-    assert seen["memory"] == ["gpt-4o-mini"], "memory op (title) must resolve to its configured model"
-    token_lines = [l for l in resp.text.split("\n") if l.strip() and '"type": "token"' in l]
+    assert seen["memory"] == ["gpt-4o-mini"], (
+        "memory op (title) must resolve to its configured model"
+    )
+    token_lines = [
+        l for l in resp.text.split("\n") if l.strip() and '"type": "token"' in l
+    ]
     full = "".join(json.loads(l.removeprefix("data: "))["content"] for l in token_lines)
     assert full == "Hello world"
 
@@ -706,14 +820,26 @@ async def test_chat_stream_fails_over_on_rate_limit(client, auth_and_chat):
 
     chat_id = await auth_and_chat()
     token = _make_token()
-    await _save_config_for_alice(LLMConfig(
-        triplets=[
-            Triplet(alias="primary", provider="openai", model="gpt-4", api_key=security.encrypt("k")),
-            Triplet(alias="backup", provider="openai", model="gpt-4o-mini", api_key=security.encrypt("k")),
-        ],
-        chat=OperationConfig(order=["primary", "backup"], rules=[]),
-        memory=OperationConfig(order=["primary", "backup"], rules=[]),
-    ))
+    await _save_config_for_alice(
+        LLMConfig(
+            triplets=[
+                Triplet(
+                    alias="primary",
+                    provider="openai",
+                    model="gpt-4",
+                    api_key=security.encrypt("k"),
+                ),
+                Triplet(
+                    alias="backup",
+                    provider="openai",
+                    model="gpt-4o-mini",
+                    api_key=security.encrypt("k"),
+                ),
+            ],
+            chat=OperationConfig(order=["primary", "backup"], rules=[]),
+            memory=OperationConfig(order=["primary", "backup"], rules=[]),
+        )
+    )
 
     seen_models = []
 
@@ -721,30 +847,54 @@ async def test_chat_stream_fails_over_on_rate_limit(client, auth_and_chat):
         body = await request.aread()
         req = json.loads(body) if body else {}
         if not req.get("stream", False):
-            return httpx.Response(200, json={
-                "id": "chatcmpl-mock",
-                "object": "chat.completion",
-                "model": "gpt-4",
-                "choices": [{"index": 0, "message": {"role": "assistant", "content": "title"}, "finish_reason": "stop"}],
-                "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5},
-            })
+            return httpx.Response(
+                200,
+                json={
+                    "id": "chatcmpl-mock",
+                    "object": "chat.completion",
+                    "model": "gpt-4",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {"role": "assistant", "content": "title"},
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": 3,
+                        "completion_tokens": 2,
+                        "total_tokens": 5,
+                    },
+                },
+            )
         seen_models.append(req.get("model"))
         if seen_models[-1] == "gpt-4":
             return httpx.Response(429, json={"error": {"message": "quota"}})
-        return httpx.Response(200, content=_sse_stream(["Hello ", "world"]), headers={"Content-Type": "text/event-stream"})
+        return httpx.Response(
+            200,
+            content=_sse_stream(["Hello ", "world"]),
+            headers={"Content-Type": "text/event-stream"},
+        )
 
     transport = httpx.MockTransport(_handler)
     mock_client = httpx.AsyncClient(transport=transport)
 
-    with patch("langchain_openai.chat_models.base._get_default_async_httpx_client", return_value=mock_client):
+    with patch(
+        "langchain_openai.chat_models.base._get_default_async_httpx_client",
+        return_value=mock_client,
+    ):
         resp = await client.post(
             "/api/chat/stream",
             json={"message": "help me with my calculus homework", "chat_id": chat_id},
             headers={"Authorization": f"Bearer {token}"},
         )
 
-    assert seen_models == ["gpt-4", "gpt-4o-mini"], "expected primary then fallback model calls"
-    token_lines = [l for l in resp.text.split("\n") if l.strip() and '"type": "token"' in l]
+    assert seen_models == ["gpt-4", "gpt-4o-mini"], (
+        "expected primary then fallback model calls"
+    )
+    token_lines = [
+        l for l in resp.text.split("\n") if l.strip() and '"type": "token"' in l
+    ]
     full = "".join(json.loads(l.removeprefix("data: "))["content"] for l in token_lines)
     assert full == "Hello world"
 
@@ -756,14 +906,26 @@ async def test_chat_stream_all_models_fail_streams_error(client, auth_and_chat):
 
     chat_id = await auth_and_chat()
     token = _make_token()
-    await _save_config_for_alice(LLMConfig(
-        triplets=[
-            Triplet(alias="primary", provider="openai", model="gpt-4", api_key=security.encrypt("k")),
-            Triplet(alias="backup", provider="openai", model="gpt-4o-mini", api_key=security.encrypt("k")),
-        ],
-        chat=OperationConfig(order=["primary", "backup"], rules=[]),
-        memory=OperationConfig(order=["primary", "backup"], rules=[]),
-    ))
+    await _save_config_for_alice(
+        LLMConfig(
+            triplets=[
+                Triplet(
+                    alias="primary",
+                    provider="openai",
+                    model="gpt-4",
+                    api_key=security.encrypt("k"),
+                ),
+                Triplet(
+                    alias="backup",
+                    provider="openai",
+                    model="gpt-4o-mini",
+                    api_key=security.encrypt("k"),
+                ),
+            ],
+            chat=OperationConfig(order=["primary", "backup"], rules=[]),
+            memory=OperationConfig(order=["primary", "backup"], rules=[]),
+        )
+    )
 
     async def _handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(429, json={"error": {"message": "quota"}})
@@ -771,7 +933,10 @@ async def test_chat_stream_all_models_fail_streams_error(client, auth_and_chat):
     transport = httpx.MockTransport(_handler)
     mock_client = httpx.AsyncClient(transport=transport)
 
-    with patch("langchain_openai.chat_models.base._get_default_async_httpx_client", return_value=mock_client):
+    with patch(
+        "langchain_openai.chat_models.base._get_default_async_httpx_client",
+        return_value=mock_client,
+    ):
         resp = await client.post(
             "/api/chat/stream",
             json={"message": "help me with my calculus homework", "chat_id": chat_id},

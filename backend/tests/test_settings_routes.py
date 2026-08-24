@@ -16,10 +16,23 @@ def _valid_body() -> dict:
         "version": 1,
         "name": "My Config",
         "triplets": [
-            {"alias": "flash", "provider": "gemini", "model": "gemini-2.5-flash", "api_key": "sk-flash-secret"},
-            {"alias": "free", "provider": "openrouter", "model": "openrouter/free", "api_key": "sk-free-secret"},
+            {
+                "alias": "flash",
+                "provider": "gemini",
+                "model": "gemini-2.5-flash",
+                "api_key": "sk-flash-secret",
+            },
+            {
+                "alias": "free",
+                "provider": "openrouter",
+                "model": "openrouter/free",
+                "api_key": "sk-free-secret",
+            },
         ],
-        "chat": {"order": ["flash", "free"], "rules": [{"when": "rate_limit", "use": ["free"]}]},
+        "chat": {
+            "order": ["flash", "free"],
+            "rules": [{"when": "rate_limit", "use": ["free"]}],
+        },
         "memory": {"order": ["flash"], "rules": []},
     }
 
@@ -42,7 +55,9 @@ async def test_requires_auth(client) -> None:
 
 
 async def test_put_and_get_roundtrip(client, auth_token) -> None:
-    put = await client.put("/api/settings/config", json=_valid_body(), headers=_headers(auth_token()))
+    put = await client.put(
+        "/api/settings/config", json=_valid_body(), headers=_headers(auth_token())
+    )
     assert put.status_code == 200
     saved = put.json()
     assert saved["triplets"][0]["api_key"] == "sk-f****cret"
@@ -57,14 +72,20 @@ async def test_put_and_get_roundtrip(client, auth_token) -> None:
 async def test_put_invalid_config_returns_422(client, auth_token) -> None:
     body = _valid_body()
     body["chat"]["order"] = ["flash", "nope"]
-    res = await client.put("/api/settings/config", json=body, headers=_headers(auth_token()))
+    res = await client.put(
+        "/api/settings/config", json=body, headers=_headers(auth_token())
+    )
     assert res.status_code == 422
     assert "unknown triplet 'nope'" in res.json()["detail"]
 
 
 async def test_export_returns_yaml_with_placeholders(client, auth_token) -> None:
-    await client.put("/api/settings/config", json=_valid_body(), headers=_headers(auth_token()))
-    res = await client.post("/api/settings/config/export", headers=_headers(auth_token()))
+    await client.put(
+        "/api/settings/config", json=_valid_body(), headers=_headers(auth_token())
+    )
+    res = await client.post(
+        "/api/settings/config/export", headers=_headers(auth_token())
+    )
     assert res.status_code == 200
     yaml_text = res.json()["yaml"]
     assert "__REPLACE_ME__" in yaml_text
@@ -72,7 +93,9 @@ async def test_export_returns_yaml_with_placeholders(client, auth_token) -> None
 
 
 async def test_export_without_config_returns_404(client, auth_token) -> None:
-    res = await client.post("/api/settings/config/export", headers=_headers(auth_token()))
+    res = await client.post(
+        "/api/settings/config/export", headers=_headers(auth_token())
+    )
     assert res.status_code == 404
 
 
@@ -83,11 +106,19 @@ async def test_import_returns_config_with_empty_keys(client, auth_token) -> None
     )
     if exported.status_code == 404:
         # seed a config first
-        await client.put("/api/settings/config", json=_valid_body(), headers=_headers(auth_token()))
-        exported = await client.post("/api/settings/config/export", headers=_headers(auth_token()))
+        await client.put(
+            "/api/settings/config", json=_valid_body(), headers=_headers(auth_token())
+        )
+        exported = await client.post(
+            "/api/settings/config/export", headers=_headers(auth_token())
+        )
     yaml_text = exported.json()["yaml"]
 
-    res = await client.post("/api/settings/config/import", json={"yaml": yaml_text}, headers=_headers(auth_token()))
+    res = await client.post(
+        "/api/settings/config/import",
+        json={"yaml": yaml_text},
+        headers=_headers(auth_token()),
+    )
     assert res.status_code == 200
     body = res.json()
     assert [t["alias"] for t in body["triplets"]] == ["flash", "free"]
@@ -95,18 +126,26 @@ async def test_import_returns_config_with_empty_keys(client, auth_token) -> None
 
 
 async def test_import_invalid_yaml_returns_422(client, auth_token) -> None:
-    res = await client.post("/api/settings/config/import", json={"yaml": "{a: b"}, headers=_headers(auth_token()))
+    res = await client.post(
+        "/api/settings/config/import",
+        json={"yaml": "{a: b"},
+        headers=_headers(auth_token()),
+    )
     assert res.status_code == 422
 
 
-async def test_put_without_aes_secret_returns_500(client, auth_token, monkeypatch) -> None:
+async def test_put_without_aes_secret_returns_500(
+    client, auth_token, monkeypatch
+) -> None:
     from app.llmconfig import security
 
     def boom(value: str) -> str:
         raise security.MissingSecretKeyError("AES_SECRET_KEY is not set")
 
     monkeypatch.setattr(security, "encrypt", boom)
-    res = await client.put("/api/settings/config", json=_valid_body(), headers=_headers(auth_token()))
+    res = await client.put(
+        "/api/settings/config", json=_valid_body(), headers=_headers(auth_token())
+    )
     assert res.status_code == 500
     assert "AES_SECRET_KEY" in res.json()["detail"]
 
@@ -121,7 +160,9 @@ async def test_catalog(client, auth_token) -> None:
     # every provider has a key page so first-time users can get a key
     assert all(p["key_url"].startswith("http") for p in providers)
     models = body["models"]
-    assert any(m["provider"] == "gemini" and m["id"] == "gemini-3.7-flash" for m in models)
+    assert any(
+        m["provider"] == "gemini" and m["id"] == "gemini-3.7-flash" for m in models
+    )
     # every model exposes purpose, tier, cost, and image capability
     for m in models:
         assert m["recommended"] in ("chat", "memory", "either")
@@ -140,7 +181,9 @@ async def test_catalog(client, auth_token) -> None:
 
 
 async def test_test_endpoint_returns_results(client, auth_token, monkeypatch) -> None:
-    await client.put("/api/settings/config", json=_valid_body(), headers=_headers(auth_token()))
+    await client.put(
+        "/api/settings/config", json=_valid_body(), headers=_headers(auth_token())
+    )
 
     async def fake_tests(cfg):
         return [{"alias": "flash", "ok": True, "latency_ms": 42}]
@@ -154,7 +197,9 @@ async def test_test_endpoint_returns_results(client, auth_token, monkeypatch) ->
     assert results[0]["latency_ms"] == 42
 
 
-async def test_test_endpoint_accepts_unsaved_config(client, auth_token, monkeypatch) -> None:
+async def test_test_endpoint_accepts_unsaved_config(
+    client, auth_token, monkeypatch
+) -> None:
     """The UI can test a freshly-created model before it is saved."""
     captured = {}
 
@@ -181,7 +226,9 @@ async def test_test_endpoint_accepts_unsaved_config(client, auth_token, monkeypa
 async def test_test_endpoint_invalid_body_returns_422(client, auth_token) -> None:
     body = _valid_body()
     body["chat"]["order"] = ["flash", "nope"]
-    res = await client.post("/api/settings/config/test", json=body, headers=_headers(auth_token()))
+    res = await client.post(
+        "/api/settings/config/test", json=body, headers=_headers(auth_token())
+    )
     assert res.status_code == 422
 
 
@@ -221,8 +268,11 @@ async def test_ping_success() -> None:
 @pytest.mark.asyncio
 async def test_ping_rate_limit() -> None:
     result = await ping_triplet(
-        alias="flash", provider="gemini", model="gemini-2.5-flash",
-        encrypted_key=_encrypted_key(), transport=_mock_transport(429, "quota"),
+        alias="flash",
+        provider="gemini",
+        model="gemini-2.5-flash",
+        encrypted_key=_encrypted_key(),
+        transport=_mock_transport(429, "quota"),
     )
     assert result["ok"] is False
     assert result["kind"] == "rate_limit"
@@ -231,8 +281,11 @@ async def test_ping_rate_limit() -> None:
 @pytest.mark.asyncio
 async def test_ping_server_error() -> None:
     result = await ping_triplet(
-        alias="flash", provider="gemini", model="gemini-2.5-flash",
-        encrypted_key=_encrypted_key(), transport=_mock_transport(500, "boom"),
+        alias="flash",
+        provider="gemini",
+        model="gemini-2.5-flash",
+        encrypted_key=_encrypted_key(),
+        transport=_mock_transport(500, "boom"),
     )
     assert result["ok"] is False
     assert result["kind"] == "server_error"
@@ -241,8 +294,11 @@ async def test_ping_server_error() -> None:
 @pytest.mark.asyncio
 async def test_ping_missing_key() -> None:
     result = await ping_triplet(
-        alias="flash", provider="gemini", model="gemini-2.5-flash",
-        encrypted_key="", transport=_mock_transport(200, "{}"),
+        alias="flash",
+        provider="gemini",
+        model="gemini-2.5-flash",
+        encrypted_key="",
+        transport=_mock_transport(200, "{}"),
     )
     assert result["ok"] is False
     assert result["error"] == "Missing API key"
@@ -251,8 +307,11 @@ async def test_ping_missing_key() -> None:
 @pytest.mark.asyncio
 async def test_ping_unknown_provider() -> None:
     result = await ping_triplet(
-        alias="x", provider="skynet", model="t-800",
-        encrypted_key=_encrypted_key(), transport=_mock_transport(200, "{}"),
+        alias="x",
+        provider="skynet",
+        model="t-800",
+        encrypted_key=_encrypted_key(),
+        transport=_mock_transport(200, "{}"),
     )
     assert result["ok"] is False
     assert "Unknown provider" in result["error"]
@@ -264,7 +323,10 @@ async def test_ping_timeout() -> None:
         raise httpx.ReadTimeout("slow")
 
     result = await ping_triplet(
-        alias="flash", provider="gemini", model="gemini-2.5-flash",
-        encrypted_key=_encrypted_key(), transport=httpx.MockTransport(hang),
+        alias="flash",
+        provider="gemini",
+        model="gemini-2.5-flash",
+        encrypted_key=_encrypted_key(),
+        transport=httpx.MockTransport(hang),
     )
     assert result["ok"] is False
