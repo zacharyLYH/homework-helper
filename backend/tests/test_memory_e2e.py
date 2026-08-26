@@ -90,7 +90,7 @@ async def test_memory_e2e_chat_worker_and_context_api(
         response = await client.post(
             "/api/chat/stream",
             json={
-                "message": "I keep making sign mistakes in the quadratic formula",
+                "message": "For my algebra homework, I keep making sign mistakes in the quadratic formula",
                 "chat_id": chat_id,
             },
             headers=_auth_header(token),
@@ -153,7 +153,7 @@ async def test_memory_e2e_subsequent_chat_injects_persisted_context(
         first_response = await client.post(
             "/api/chat/stream",
             json={
-                "message": "I keep making sign mistakes in the quadratic formula",
+                "message": "For my algebra homework, I keep making sign mistakes in the quadratic formula",
                 "chat_id": chat_id,
             },
             headers=_auth_header(token),
