@@ -1,7 +1,6 @@
 import json
 
 import pytest
-
 from memory import db as memory_db
 from memory.jobs.utils import (
     _apply_evaluation,
@@ -10,7 +9,12 @@ from memory.jobs.utils import (
     _validate_semantic,
     normalize_concept_key,
 )
-from memory.schemas import ConceptEdgeUpsert, ConceptStateDelta, ConceptUpsert, MemoryEvaluation
+from memory.schemas import (
+    ConceptEdgeUpsert,
+    ConceptStateDelta,
+    ConceptUpsert,
+    MemoryEvaluation,
+)
 
 
 def test_normalize_concept_key() -> None:
@@ -49,7 +53,10 @@ def test_validate_semantic_applies_all_caps(monkeypatch) -> None:
         skip=False,
         observations=["one", "two"],
         concept_upserts=[ConceptUpsert("one", "One"), ConceptUpsert("two", "Two")],
-        concept_edges=[ConceptEdgeUpsert("one", "two", "related", 0.5), ConceptEdgeUpsert("two", "one", "related", 0.5)],
+        concept_edges=[
+            ConceptEdgeUpsert("one", "two", "related", 0.5),
+            ConceptEdgeUpsert("two", "one", "related", 0.5),
+        ],
         concept_state_deltas=[],
         trait_updates={},
         updated_summary="12345",
@@ -89,32 +96,116 @@ def test_apply_evaluation_writes_and_merges_memory_state(tmp_path, monkeypatch) 
     _apply_evaluation(user_id=11, subject_id=7, evaluation=evaluation, job_id=1)
 
     with memory_db.get_conn(db_path) as conn:
-        assert conn.execute("SELECT COUNT(*) FROM learner_observations").fetchone()[0] == 1
-        traits = json.loads(conn.execute("SELECT traits_json FROM learner_traits").fetchone()[0])
+        assert (
+            conn.execute("SELECT COUNT(*) FROM learner_observations").fetchone()[0] == 1
+        )
+        traits = json.loads(
+            conn.execute("SELECT traits_json FROM learner_traits").fetchone()[0]
+        )
         assert traits == {"pace": "steady", "topic": "algebra"}
         assert conn.execute("SELECT COUNT(*) FROM concept_edges").fetchone()[0] == 1
         state = conn.execute(
             "SELECT mastery, confidence FROM learner_concept_state"
         ).fetchone()
         assert (state[0], state[1]) == (0.4, 0.8)
-        assert conn.execute("SELECT summary FROM memory_summary").fetchone()[0] == "Practice algebra basics."
+        assert (
+            conn.execute("SELECT summary FROM memory_summary").fetchone()[0]
+            == "Practice algebra basics."
+        )
 
 
-def test_set_job_failed_preserves_valid_payload_and_raw_invalid_payload(tmp_path, monkeypatch) -> None:
+def test_apply_evaluation_skips_unknown_concepts_and_empty_keys(
+    tmp_path, monkeypatch
+) -> None:
     db_path = tmp_path / "memory.db"
     memory_db.init_db(db_path)
     monkeypatch.setattr("memory.config.DEFAULT_MEMORY_DB_PATH", db_path)
+
+    evaluation = MemoryEvaluation(
+        skip=False,
+        observations=[],
+        concept_upserts=[ConceptUpsert("---", "Dropped")],
+        concept_edges=[ConceptEdgeUpsert("missing", "also_missing", "related", 0.5)],
+        concept_state_deltas=[ConceptStateDelta("missing", 0.2, 0.3)],
+        trait_updates={},
+        updated_summary="",
+    )
+
+    _apply_evaluation(user_id=1, subject_id=1, evaluation=evaluation, job_id=1)
+
     with memory_db.get_conn(db_path) as conn:
-        conn.execute("INSERT INTO memory_update_jobs (user_id, subject_id, payload_json) VALUES (1, 1, ?)", ("{}",))
+        assert conn.execute("SELECT COUNT(*) FROM concepts").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM concept_edges").fetchone()[0] == 0
+        assert (
+            conn.execute("SELECT COUNT(*) FROM learner_concept_state").fetchone()[0]
+            == 0
+        )
+
+
+def test_set_job_failed_preserves_valid_payload_and_raw_invalid_payload(
+    tmp_path, monkeypatch
+) -> None:
+    db_path = tmp_path / "memory.db"
+    valid_id = None
+    invalid_id = None
+    valid = None
+    invalid = None
+    memory_db.init_db(db_path)
+    monkeypatch.setattr("memory.config.DEFAULT_MEMORY_DB_PATH", db_path)
+    with memory_db.get_conn(db_path) as conn:
+        conn.execute(
+            "INSERT INTO memory_update_jobs (user_id, subject_id, payload_json) VALUES (1, 1, ?)",
+            ("{}",),
+        )
         valid_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-        conn.execute("INSERT INTO memory_update_jobs (user_id, subject_id, payload_json) VALUES (1, 1, ?)", ("bad",))
+        conn.execute(
+            "INSERT INTO memory_update_jobs (user_id, subject_id, payload_json) VALUES (1, 1, ?)",
+            ("bad",),
+        )
         invalid_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
+    assert valid_id is not None
+    assert invalid_id is not None
     _set_job_failed(valid_id, payload_json="{}", error="failure")
     _set_job_failed(invalid_id, payload_json="bad", error="failure")
 
     with memory_db.get_conn(db_path) as conn:
-        valid = json.loads(conn.execute("SELECT payload_json FROM memory_update_jobs WHERE id = ?", (valid_id,)).fetchone()[0])
-        invalid = json.loads(conn.execute("SELECT payload_json FROM memory_update_jobs WHERE id = ?", (invalid_id,)).fetchone()[0])
+        valid = json.loads(
+            conn.execute(
+                "SELECT payload_json FROM memory_update_jobs WHERE id = ?", (valid_id,)
+            ).fetchone()[0]
+        )
+        invalid = json.loads(
+            conn.execute(
+                "SELECT payload_json FROM memory_update_jobs WHERE id = ?",
+                (invalid_id,),
+            ).fetchone()[0]
+        )
+    assert valid is not None
+    assert invalid is not None
     assert valid["worker_error"] == "failure"
     assert invalid["raw_payload_json"] == "bad"
+
+
+def test_set_job_failed_handles_missing_payload(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "memory.db"
+    job_id = None
+    row = None
+    memory_db.init_db(db_path)
+    monkeypatch.setattr("memory.config.DEFAULT_MEMORY_DB_PATH", db_path)
+    with memory_db.get_conn(db_path) as conn:
+        job_id = conn.execute(
+            "INSERT INTO memory_update_jobs (user_id, subject_id) VALUES (1, 1)"
+        ).lastrowid
+
+    assert job_id is not None
+    _set_job_failed(job_id, payload_json=None, error="failure")
+
+    with memory_db.get_conn(db_path) as conn:
+        row = conn.execute(
+            "SELECT status, payload_json FROM memory_update_jobs WHERE id = ?",
+            (job_id,),
+        ).fetchone()
+    assert row is not None
+    assert row["status"] == "failed"
+    assert json.loads(row["payload_json"]) == {"worker_error": "failure"}

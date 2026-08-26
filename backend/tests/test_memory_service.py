@@ -1,18 +1,23 @@
 import json
 import sqlite3
+from typing import cast
 
 from memory import db as memory_db
 from memory.service import utils
 from memory.service.main import enqueue_memory_update, load_memory_context
+from shared.schemas import MemoryUpdatePayload
 
 
-def _payload(messages: list[dict[str, str]]) -> dict:
-    return {
-        "trigger": "chat_turn",
-        "memory_loaded": False,
-        "memory_context": "",
-        "messages": messages,
-    }
+def _payload(messages: list[dict[str, object]]) -> MemoryUpdatePayload:
+    return cast(
+        MemoryUpdatePayload,
+        {
+            "trigger": "chat_turn",
+            "memory_loaded": False,
+            "memory_context": "",
+            "messages": messages,
+        },
+    )
 
 
 def test_extract_user_text_filters_roles_and_empty_content() -> None:
@@ -29,8 +34,11 @@ def test_extract_user_text_filters_roles_and_empty_content() -> None:
     )
 
     assert utils._extract_user_text(payload) == "first second 123"
-    assert utils._extract_user_text(None) == ""
-    assert utils._extract_user_text({"messages": "invalid"}) == ""
+    assert utils._extract_user_text(cast(MemoryUpdatePayload, None)) == ""
+    assert (
+        utils._extract_user_text(cast(MemoryUpdatePayload, {"messages": "invalid"}))
+        == ""
+    )
 
 
 def test_enqueue_memory_update_skip_decisions(tmp_path, monkeypatch) -> None:
@@ -56,14 +64,22 @@ def test_enqueue_memory_update_skip_decisions(tmp_path, monkeypatch) -> None:
     assert short.reason == "skipped_short_turn"
 
 
-def test_enqueue_memory_update_deduplicates_and_rate_limits(tmp_path, monkeypatch) -> None:
+def test_enqueue_memory_update_deduplicates_and_rate_limits(
+    tmp_path, monkeypatch
+) -> None:
     db_path = tmp_path / "memory.db"
     memory_db.init_db(db_path)
     monkeypatch.setattr("memory.config.DEFAULT_MEMORY_DB_PATH", db_path)
-    payload = _payload([{"role": "user", "content": "a sufficiently long homework turn"}])
+    payload = _payload(
+        [{"role": "user", "content": "a sufficiently long homework turn"}]
+    )
 
-    first = enqueue_memory_update(user_id=1, subject_id=1, chat_id=None, payload=payload)
-    duplicate = enqueue_memory_update(user_id=1, subject_id=1, chat_id=None, payload=payload)
+    first = enqueue_memory_update(
+        user_id=1, subject_id=1, chat_id=None, payload=payload
+    )
+    duplicate = enqueue_memory_update(
+        user_id=1, subject_id=1, chat_id=None, payload=payload
+    )
     assert first.enqueued
     assert duplicate.reason == "skipped_dedup"
 
@@ -75,11 +91,15 @@ def test_enqueue_memory_update_deduplicates_and_rate_limits(tmp_path, monkeypatc
                 (1, 1),
             )
 
-    limited = enqueue_memory_update(user_id=1, subject_id=1, chat_id=None, payload=payload)
+    limited = enqueue_memory_update(
+        user_id=1, subject_id=1, chat_id=None, payload=payload
+    )
     assert limited.reason == "skipped_rate_limit"
 
 
-def test_load_memory_context_renders_all_sections_and_logs_trace(tmp_path, monkeypatch) -> None:
+def test_load_memory_context_renders_all_sections_and_logs_trace(
+    tmp_path, monkeypatch
+) -> None:
     db_path = tmp_path / "memory.db"
     memory_db.init_db(db_path)
     monkeypatch.setattr("memory.config.DEFAULT_MEMORY_DB_PATH", db_path)
@@ -138,3 +158,43 @@ def test_load_memory_context_returns_empty_on_database_error(monkeypatch) -> Non
 
     assert context.is_empty
     assert context.rendered == ""
+
+
+def test_load_memory_context_ignores_malformed_traits(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "memory.db"
+    memory_db.init_db(db_path)
+    monkeypatch.setattr("memory.config.DEFAULT_MEMORY_DB_PATH", db_path)
+    with memory_db.get_conn(db_path) as conn:
+        conn.execute(
+            "INSERT INTO learner_traits (user_id, subject_id, traits_json) VALUES (1, 2, ?)",
+            ("not-json",),
+        )
+
+    context = load_memory_context(user_id=1, subject_id=2)
+
+    assert context.traits == {}
+    assert "Learner traits:" not in context.rendered
+
+
+def test_enqueue_memory_update_returns_db_error_on_database_failure(
+    monkeypatch,
+) -> None:
+    class BrokenConnection:
+        def __enter__(self):
+            raise sqlite3.OperationalError("broken")
+
+        def __exit__(self, *_args):
+            return False
+
+    monkeypatch.setattr("memory.service.main.get_conn", lambda: BrokenConnection())
+    payload = _payload(
+        [{"role": "user", "content": "a sufficiently long homework turn"}]
+    )
+
+    decision = enqueue_memory_update(
+        user_id=1, subject_id=2, chat_id=None, payload=payload
+    )
+
+    assert decision.enqueued is False
+    assert decision.job_id is None
+    assert decision.reason == "db_error"

@@ -3,8 +3,12 @@ import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
-from memory.llm import _make_llm, _parse_evaluation, evaluate_memory
+from memory.llm import (
+    _make_llm,
+    _make_response_format_schema,
+    _parse_evaluation,
+    evaluate_memory,
+)
 from memory.schemas import MemoryEvaluationInput
 
 
@@ -14,9 +18,20 @@ def test_parse_evaluation_accepts_valid_edges_and_state() -> None:
             {
                 "skip": False,
                 "observations": ["Needs practice"],
-                "concept_upserts": [{"concept_key": "fractions", "display_name": "Fractions"}],
-                "concept_edges": [{"from_concept_key": "addition", "to_concept_key": "fractions", "relation": "prerequisite", "weight": 0.5}],
-                "concept_state_deltas": [{"concept_key": "fractions", "mastery": 0.25, "confidence": 0.8}],
+                "concept_upserts": [
+                    {"concept_key": "fractions", "display_name": "Fractions"}
+                ],
+                "concept_edges": [
+                    {
+                        "from_concept_key": "addition",
+                        "to_concept_key": "fractions",
+                        "relation": "prerequisite",
+                        "weight": 0.5,
+                    }
+                ],
+                "concept_state_deltas": [
+                    {"concept_key": "fractions", "mastery": 0.25, "confidence": 0.8}
+                ],
                 "trait_updates": {"pace": "careful"},
                 "updated_summary": "Practice fractions.",
             }
@@ -40,7 +55,9 @@ def test_parse_evaluation_accepts_valid_edges_and_state() -> None:
 def test_parse_evaluation_rejects_invalid_ranges(field, value, message) -> None:
     data = {"concept_edges": [], "concept_state_deltas": []}
     if field == "edge":
-        data["concept_edges"] = [{"from_concept_key": "a", "to_concept_key": "b", **value}]
+        data["concept_edges"] = [
+            {"from_concept_key": "a", "to_concept_key": "b", **value}
+        ]
     else:
         data["concept_state_deltas"] = [{"concept_key": "a", **value}]
 
@@ -70,7 +87,10 @@ def test_evaluate_memory_uses_default_llm_and_parses_response(monkeypatch) -> No
         current_traits={},
         current_weak_concepts=[],
     )
-    fake_llm = type("FakeLLM", (), {"ainvoke": AsyncMock(return_value=type("Response", (), {"content": '{"skip": true}'})())})()
+    ainvoke = AsyncMock(
+        return_value=type("Response", (), {"content": '{"skip": true}'})()
+    )
+    fake_llm = type("FakeLLM", (), {"ainvoke": ainvoke})()
     monkeypatch.setattr("memory.llm._resolve_memory_llm", lambda _user_id: None)
     monkeypatch.setattr("memory.llm._make_llm", lambda **_kwargs: fake_llm)
     monkeypatch.setattr("memory.llm.MEMORY_LLM_TIMEOUT_SECONDS", 1)
@@ -78,14 +98,10 @@ def test_evaluate_memory_uses_default_llm_and_parses_response(monkeypatch) -> No
     result = asyncio.run(evaluate_memory(current_state=state))
 
     assert result.skip is True
-    fake_llm.ainvoke.assert_awaited_once()
+    ainvoke.assert_awaited_once()
 
-import pytest
+
 from pydantic import ValidationError
-
-from memory.llm import _make_llm
-from memory.llm import _make_response_format_schema
-from memory.llm import _parse_evaluation
 
 
 def test_parse_evaluation_skip_only_defaults() -> None:
@@ -119,6 +135,22 @@ def test_parse_evaluation_supports_langchain_content_list() -> None:
     evaluation = _parse_evaluation(content)
 
     assert evaluation.trait_updates == {"prefers_visuals": "true"}
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "[]",
+        '"result"',
+        [],
+        [{"type": "image", "url": "image"}],
+        42,
+        None,
+    ],
+)
+def test_parse_evaluation_rejects_unsupported_response_content(content) -> None:
+    with pytest.raises((TypeError, ValueError, json.JSONDecodeError)):
+        _parse_evaluation(content)
 
 
 def test_response_format_schema_is_strict_json_schema() -> None:
