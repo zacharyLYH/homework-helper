@@ -18,9 +18,12 @@ from app.constants import (
     MEMORY_LOADER_ERROR_EVENT,
     MEMORY_LOADER_SKIP_EVENT,
     MEMORY_UPDATE_TRIGGER_CHAT_TURN,
+    MEMORY_PAYLOAD_TRIGGER,
     MEMORY_UPDATER_ERROR_EVENT,
     MEMORY_UPDATER_OUTCOME_EVENT,
     MEMORY_UPDATER_SKIP_EVENT,
+    MESSAGE_CONTENT,
+    MESSAGE_ROLE,
     MESSAGE_ROLE_AI,
     MESSAGE_ROLE_HUMAN,
     MISSING_SCOPE_REASON,
@@ -160,7 +163,7 @@ def memory_updater(state: GraphState) -> dict:
 
     log.info("Memory updater started: user_id=%s subject_id=%s", user_id, subject_id)
 
-    messages = state.get("messages", [])
+    messages = state.get(STATE_MESSAGES, [])
     # Walk back to find the last non-empty human and ai messages (streaming leaves empty tail chunks)
     last_by_role: dict[str, str] = {}
     for msg in reversed(messages):
@@ -173,16 +176,16 @@ def memory_updater(state: GraphState) -> dict:
             break
 
     snippet: list[dict[str, str]] = [
-        {"role": role, "content": last_by_role[role][:400]}
+        {MESSAGE_ROLE: role, MESSAGE_CONTENT: last_by_role[role][:400]}
         for role in (MESSAGE_ROLE_HUMAN, MESSAGE_ROLE_AI)
         if role in last_by_role
     ]
 
     payload: MemoryUpdatePayload = {
-        "trigger": MEMORY_UPDATE_TRIGGER_CHAT_TURN,
+        MEMORY_PAYLOAD_TRIGGER: MEMORY_UPDATE_TRIGGER_CHAT_TURN,
         STATE_MEMORY_LOADED: state.get(STATE_MEMORY_LOADED, False),
         STATE_MEMORY_CONTEXT: state.get(STATE_MEMORY_CONTEXT, "")[:2000],
-        "messages": snippet,
+        STATE_MESSAGES: snippet,
     }
 
     try:
@@ -239,11 +242,11 @@ def tool_executor(state: GraphState) -> dict:
             for tc in fresh_calls
         ],
     )
-    result = ToolNode(ALL_TOOLS).invoke({"messages": [msg]})
+    result = ToolNode(ALL_TOOLS).invoke({STATE_MESSAGES: [msg]})
 
     new_signatures = [_make_sig(tc["name"], tc["args"]) for tc in fresh_calls]
 
-    tool_msgs = result.get("messages", [])
+    tool_msgs = result.get(STATE_MESSAGES, [])
     for tm in tool_msgs:
         structured_log(
             "tool_result",
@@ -255,7 +258,7 @@ def tool_executor(state: GraphState) -> dict:
             structured_log("tool_artifact", artifact=str(tm.artifact)[:1000])
 
     return {
-        "messages": tool_msgs,
+        STATE_MESSAGES: tool_msgs,
         STATE_PENDING_TOOL_CALLS: max(0, state.get(STATE_PENDING_TOOL_CALLS, 0) - 1),
         STATE_PENDING_TOOL_CALLS_DATA: [],
         STATE_CALLED_TOOLS: list(called | set(new_signatures)),
@@ -314,7 +317,7 @@ async def _node_with_prompt(
     bind_tools: list | None = None,
     config: RunnableConfig | None = None,
 ) -> AsyncGenerator[dict, None]:
-    messages = state["messages"]
+    messages = state[STATE_MESSAGES]
     memory_context = state.get(STATE_MEMORY_CONTEXT, "")
     memory_loaded = bool(state.get(STATE_MEMORY_LOADED, False))
 
@@ -426,11 +429,11 @@ def route_after_agent(state: GraphState) -> Literal["tool_executor", "memory_upd
         pending_data = state.get(STATE_PENDING_TOOL_CALLS_DATA, [])
         called: set[str] = set(state.get(STATE_CALLED_TOOLS, []))
         if pending_data and all(_is_repeat(tc["name"], tc["args"], called) for tc in pending_data):
-            structured_log("graph_route", destination=NODE_MEMORY_UPDATER, reason="all_tools_already_called", pending_calls=state["pending_tool_calls"])
+            structured_log("graph_route", destination=NODE_MEMORY_UPDATER, reason="all_tools_already_called", pending_calls=state[STATE_PENDING_TOOL_CALLS])
             return NODE_MEMORY_UPDATER
-        structured_log("graph_route", destination="tool_executor", pending_calls=state[STATE_PENDING_TOOL_CALLS])
+        structured_log("graph_route", destination=NODE_TOOL_EXECUTOR, pending_calls=state[STATE_PENDING_TOOL_CALLS])
         return NODE_TOOL_EXECUTOR
-    structured_log("graph_route", destination="end", pending_calls=0)
+    structured_log("graph_route", destination=NODE_MEMORY_UPDATER, pending_calls=0)
     return NODE_MEMORY_UPDATER
 
 
@@ -453,8 +456,8 @@ def build_graph() -> CompiledStateGraph:
         END_LABEL: END,
     })
     graph_builder.add_edge(NODE_MEMORY_LOADER, NODE_AGENT)
-    graph_builder.add_conditional_edges("agent", route_after_agent, {
-        "tool_executor": "tool_executor",
+    graph_builder.add_conditional_edges(NODE_AGENT, route_after_agent, {
+        NODE_TOOL_EXECUTOR: NODE_TOOL_EXECUTOR,
         NODE_MEMORY_UPDATER: NODE_MEMORY_UPDATER,
         END_LABEL: END,
     })

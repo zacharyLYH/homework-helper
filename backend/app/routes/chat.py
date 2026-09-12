@@ -11,14 +11,24 @@ from langchain_core.runnables import RunnableConfig
 from app.auth import get_current_user
 from app.config import settings
 from app.constants import (
+    MESSAGE_CONTENT,
+    MESSAGE_ROLE,
     NODE_ALIGNMENT_CHECK,
+    NODE_MEMORY_LOADER,
+    NODE_MEMORY_UPDATER,
     NODE_TOOL_EXECUTOR,
     STATE_ALIGNMENT_SCORE,
     STATE_CALLED_TOOLS,
+    STATE_CHAT_ID,
+    STATE_MEMORY_CONTEXT,
+    STATE_MEMORY_ENABLED,
+    STATE_MEMORY_LOADED,
     STATE_MESSAGES,
     STATE_PENDING_TOOL_CALLS,
     STATE_PENDING_TOOL_CALLS_DATA,
     STATE_REJECTED_REASON,
+    STATE_SUBJECT_ID,
+    STATE_USER_ID,
 )
 from app.db import get_chat, get_messages, save_message, update_chat_title, update_chat_token_usage
 from app.graph import compiled_graph
@@ -37,10 +47,10 @@ router = APIRouter()
 
 
 def _build_lc_messages(req: ChatRequest) -> list:
-    raw = req.messages or [{"role": "user", "content": req.message}]
+    raw = req.messages or [{MESSAGE_ROLE: "user", MESSAGE_CONTENT: req.message}]
     msgs: list = [
-        HumanMessage(content=m["content"]) if m["role"] == "user"
-        else AIMessage(content=m["content"])
+        HumanMessage(content=m[MESSAGE_CONTENT]) if m[MESSAGE_ROLE] == "user"
+        else AIMessage(content=m[MESSAGE_CONTENT])
         for m in raw
     ]
 
@@ -164,16 +174,16 @@ async def chat_stream(req: ChatRequest, request: Request, user: User = Depends(g
         STATE_CALLED_TOOLS: [],
         STATE_REJECTED_REASON: "",
         STATE_ALIGNMENT_SCORE: 0.0,
-        "chat_id": req.chat_id,
-        "user_id": user.id,
-        "subject_id": subject_id,
-        "memory_context": "",
-        "memory_loaded": False,
-        "memory_enabled": bool(getattr(request.app.state, "memory_enabled", False)),
+        STATE_CHAT_ID: req.chat_id,
+        STATE_USER_ID: user.id,
+        STATE_SUBJECT_ID: subject_id,
+        STATE_MEMORY_CONTEXT: "",
+        STATE_MEMORY_LOADED: False,
+        STATE_MEMORY_ENABLED: bool(getattr(request.app.state, "memory_enabled", False)),
     }
     log.info(
         "Chat memory mode: enabled=%s reason=%s user_id=%s subject_id=%s",
-        initial_state["memory_enabled"],
+        initial_state[STATE_MEMORY_ENABLED],
         getattr(request.app.state, "memory_status_reason", "unknown"),
         user.id,
         subject_id,
@@ -202,7 +212,7 @@ async def chat_stream(req: ChatRequest, request: Request, user: User = Depends(g
                 ):
                     node_name = event.get("metadata", {}).get("langgraph_node", "")
 
-                    if node_name in {"memory_loader", "memory_updater"} and event["event"] in {
+                    if node_name in {NODE_MEMORY_LOADER, NODE_MEMORY_UPDATER} and event["event"] in {
                         "on_chain_start",
                         "on_chain_end",
                     }:

@@ -6,6 +6,18 @@ import json
 import re
 from typing import Any
 
+from app.constants import (
+    MEMORY_PAYLOAD_TRIGGER,
+    MEMORY_WORKER_APPLY_DONE_EVENT,
+    MEMORY_WORKER_APPLY_START_EVENT,
+    MEMORY_WORKER_KEY_NORMALIZED_EVENT,
+    MEMORY_WORKER_VALIDATION_TRUNCATED_EVENT,
+    MESSAGE_CONTENT,
+    MESSAGE_ROLE,
+    STATE_MEMORY_CONTEXT,
+    STATE_MEMORY_LOADED,
+    STATE_MESSAGES,
+)
 from app.logging import get_logger
 from app.structured_log import structured_log
 from memory.config import (
@@ -43,14 +55,17 @@ def _parse_payload(payload_json: str | None) -> MemoryUpdatePayload:
     parsed = json.loads(str(payload_json))
     if isinstance(parsed, dict):
         messages = [
-            {"role": str(m.get("role", "")), "content": str(m.get("content", ""))}
-            for m in parsed.get("messages", [])
+            {
+                MESSAGE_ROLE: str(m.get(MESSAGE_ROLE, "")),
+                MESSAGE_CONTENT: str(m.get(MESSAGE_CONTENT, "")),
+            }
+            for m in parsed.get(STATE_MESSAGES, [])
             if isinstance(m, dict)
         ]
         return MemoryUpdatePayload(
-            trigger=str(parsed.get("trigger", "")),
-            memory_loaded=bool(parsed.get("memory_loaded", False)),
-            memory_context=str(parsed.get("memory_context", "")),
+            trigger=str(parsed.get(MEMORY_PAYLOAD_TRIGGER, "")),
+            memory_loaded=bool(parsed.get(STATE_MEMORY_LOADED, False)),
+            memory_context=str(parsed.get(STATE_MEMORY_CONTEXT, "")),
             messages=messages,
         )
     return MemoryUpdatePayload(
@@ -63,8 +78,11 @@ def _load_current_state(
 ) -> MemoryEvaluationInput:
     """Read current memory state from DB and combine with payload messages."""
     messages: list[dict] = [
-        {"role": str(m.get("role", "")), "content": str(m.get("content", ""))}
-        for m in payload.get("messages", [])
+        {
+            MESSAGE_ROLE: str(m.get(MESSAGE_ROLE, "")),
+            MESSAGE_CONTENT: str(m.get(MESSAGE_CONTENT, "")),
+        }
+        for m in payload.get(STATE_MESSAGES, [])
         if isinstance(m, dict)
     ]
 
@@ -128,7 +146,7 @@ def _validate_semantic(
     obs = evaluation.observations
     if len(obs) > MEMORY_LLM_MAX_OBSERVATIONS:
         structured_log(
-            "memory_worker_validation_truncated",
+            MEMORY_WORKER_VALIDATION_TRUNCATED_EVENT,
             job_id=job_id,
             field="observations",
             original_count=len(obs),
@@ -139,7 +157,7 @@ def _validate_semantic(
     upserts = evaluation.concept_upserts
     if len(upserts) > MEMORY_LLM_MAX_CONCEPTS:
         structured_log(
-            "memory_worker_validation_truncated",
+            MEMORY_WORKER_VALIDATION_TRUNCATED_EVENT,
             job_id=job_id,
             field="concept_upserts",
             original_count=len(upserts),
@@ -150,7 +168,7 @@ def _validate_semantic(
     edges = evaluation.concept_edges
     if len(edges) > MEMORY_LLM_MAX_CONCEPTS:
         structured_log(
-            "memory_worker_validation_truncated",
+            MEMORY_WORKER_VALIDATION_TRUNCATED_EVENT,
             job_id=job_id,
             field="concept_edges",
             original_count=len(edges),
@@ -161,7 +179,7 @@ def _validate_semantic(
     summary = evaluation.updated_summary
     if len(summary) > MEMORY_LLM_MAX_SUMMARY_CHARS:
         structured_log(
-            "memory_worker_validation_truncated",
+            MEMORY_WORKER_VALIDATION_TRUNCATED_EVENT,
             job_id=job_id,
             field="updated_summary",
             original_count=len(summary),
@@ -188,7 +206,7 @@ def _apply_evaluation(
     job_id: int,
 ) -> None:
     """Write all LLM-derived updates atomically in a single transaction."""
-    structured_log("memory_worker_apply_start", job_id=job_id)
+    structured_log(MEMORY_WORKER_APPLY_START_EVENT, job_id=job_id)
     tables_written: list[str] = []
 
     with get_conn() as conn:
@@ -202,7 +220,7 @@ def _apply_evaluation(
                     cu.concept_key,
                 )
                 structured_log(
-                    "memory_worker_key_normalized",
+                    MEMORY_WORKER_KEY_NORMALIZED_EVENT,
                     job_id=job_id,
                     raw_key=cu.concept_key,
                     normalized_key="(dropped)",
@@ -210,7 +228,7 @@ def _apply_evaluation(
                 continue
             if nkey != cu.concept_key:
                 structured_log(
-                    "memory_worker_key_normalized",
+                    MEMORY_WORKER_KEY_NORMALIZED_EVENT,
                     job_id=job_id,
                     raw_key=cu.concept_key,
                     normalized_key=nkey,
@@ -354,7 +372,7 @@ def _apply_evaluation(
             tables_written.append("memory_summary")
 
     structured_log(
-        "memory_worker_apply_done",
+        MEMORY_WORKER_APPLY_DONE_EVENT,
         job_id=job_id,
         tables_written=tables_written,
     )

@@ -4,6 +4,13 @@ import json
 import sqlite3
 from typing import Any
 
+from app.constants import (
+    MEMORY_ENQUEUE_DECISION_EVENT,
+    MEMORY_TRACE_INSERT_ERROR_EVENT,
+    MESSAGE_CONTENT,
+    MESSAGE_ROLE,
+    STATE_MESSAGES,
+)
 from app.structured_log import structured_log
 from memory.config import (
     MEMORY_DEDUP_WINDOW_SECONDS,
@@ -180,7 +187,7 @@ def _log_retrieval_trace(
     except sqlite3.Error:
         # Silently fail; don't corrupt the read
         structured_log(
-            "memory_trace_insert_error", user_id=user_id, subject_id=subject_id
+            MEMORY_TRACE_INSERT_ERROR_EVENT, user_id=user_id, subject_id=subject_id
         )
 
 
@@ -222,7 +229,7 @@ def _make_skip_decision(
     """Create and log a skip decision."""
     decision = EnqueueDecision(enqueued=False, job_id=None, reason=reason)
     structured_log(
-        "memory_enqueue_decision",
+        MEMORY_ENQUEUE_DECISION_EVENT,
         user_id=user_id,
         subject_id=subject_id,
         enqueued=decision.enqueued,
@@ -237,7 +244,7 @@ def _make_error_decision(
     """Create and log an error decision."""
     decision = EnqueueDecision(enqueued=False, job_id=None, reason="db_error")
     structured_log(
-        "memory_enqueue_decision",
+        MEMORY_ENQUEUE_DECISION_EVENT,
         user_id=user_id,
         subject_id=subject_id,
         enqueued=decision.enqueued,
@@ -302,7 +309,7 @@ def _do_enqueue_job(
 
     decision = EnqueueDecision(enqueued=True, job_id=int(job_id), reason="enqueued")
     structured_log(
-        "memory_enqueue_decision",
+        MEMORY_ENQUEUE_DECISION_EVENT,
         user_id=user_id,
         subject_id=subject_id,
         enqueued=decision.enqueued,
@@ -320,14 +327,14 @@ def _extract_user_text(payload: MemoryUpdatePayload) -> str:
     if not isinstance(payload, dict):
         return ""
 
-    messages = payload.get("messages", [])
+    messages = payload.get(STATE_MESSAGES, [])
     if not isinstance(messages, list):
         return ""
 
     user_messages = [
-        msg.get("content", "")
+        msg.get(MESSAGE_CONTENT, "")
         for msg in messages
-        if isinstance(msg, dict) and msg.get("role") in ("user", "human")
+        if isinstance(msg, dict) and msg.get(MESSAGE_ROLE) in ("user", "human")
     ]
 
     text_parts = [str(msg).strip() for msg in user_messages if msg]

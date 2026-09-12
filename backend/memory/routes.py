@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.auth import get_current_user
+from app.constants import MEMORY_DISABLED_REASON
 from app.db import get_subject
 from memory.db import get_conn
 from memory.service.main import load_memory_context
@@ -17,7 +18,7 @@ router = APIRouter(tags=["memory"])
 
 def _memory_disabled_payload(request: Request) -> dict:
     return {
-        "error": "memory_disabled",
+        "error": MEMORY_DISABLED_REASON,
         "reason": getattr(request.app.state, "memory_status_reason", "unknown"),
         "message": "Memory subsystem is disabled",
     }

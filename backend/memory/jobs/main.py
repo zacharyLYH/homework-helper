@@ -12,6 +12,11 @@ import asyncio
 import time
 from dataclasses import dataclass
 
+from app.constants import (
+    MEMORY_WORKER_LLM_DONE_EVENT,
+    MEMORY_WORKER_LLM_ERROR_EVENT,
+    MEMORY_WORKER_LLM_START_EVENT,
+)
 from app.logging import get_logger
 from app.structured_log import structured_log
 from memory.db import init_db
@@ -46,7 +51,7 @@ def _process_claimed_job(job: dict, loop: asyncio.AbstractEventLoop) -> bool:
 
     t0 = time.monotonic()
     structured_log(
-        "memory_worker_llm_start", job_id=job_id, user_id=user_id, subject_id=subject_id
+        MEMORY_WORKER_LLM_START_EVENT, job_id=job_id, user_id=user_id, subject_id=subject_id
     )
 
     try:
@@ -60,7 +65,7 @@ def _process_claimed_job(job: dict, loop: asyncio.AbstractEventLoop) -> bool:
 
         latency_ms = int((time.monotonic() - t0) * 1000)
         structured_log(
-            "memory_worker_llm_done",
+            MEMORY_WORKER_LLM_DONE_EVENT,
             job_id=job_id,
             latency_ms=latency_ms,
             skip=evaluation.skip,
@@ -82,7 +87,7 @@ def _process_claimed_job(job: dict, loop: asyncio.AbstractEventLoop) -> bool:
     except Exception as exc:
         # asyncio.TimeoutError str() is empty in Python 3.10; use repr() for clarity
         error_msg = repr(exc) if not str(exc) else str(exc)
-        structured_log("memory_worker_llm_error", job_id=job_id, error=error_msg[:400])
+        structured_log(MEMORY_WORKER_LLM_ERROR_EVENT, job_id=job_id, error=error_msg[:400])
         log.warning("Memory worker failed job_id=%s error=%s", job_id, error_msg)
         _set_job_failed(job_id, payload_json=job.get("payload_json"), error=error_msg)
         return False

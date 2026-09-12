@@ -11,6 +11,14 @@ import sqlite3
 import time
 from typing import Any
 
+from app.constants import (
+    MEMORY_CONTEXT_ERROR_EVENT,
+    MEMORY_CONTEXT_LOADED_EVENT,
+    MEMORY_STATUS_DB_MISSING,
+    MEMORY_STATUS_DB_UNREADABLE,
+    MEMORY_STATUS_ENABLED,
+    MEMORY_STATUS_SCHEMA_MISSING,
+)
 from app.structured_log import structured_log
 from memory.config import (
     MEMORY_MIN_TURN_CHARS,
@@ -65,7 +73,7 @@ def get_memory_runtime_status(
             requested=True,
             enabled=False,
             strict_mode=memory_strict_mode,
-            reason="memory_db_missing",
+            reason=MEMORY_STATUS_DB_MISSING,
             db_path=str(db_path),
         )
 
@@ -76,7 +84,7 @@ def get_memory_runtime_status(
             requested=True,
             enabled=False,
             strict_mode=memory_strict_mode,
-            reason="memory_db_unreadable",
+            reason=MEMORY_STATUS_DB_UNREADABLE,
             db_path=str(db_path),
         )
 
@@ -85,7 +93,7 @@ def get_memory_runtime_status(
             requested=True,
             enabled=False,
             strict_mode=memory_strict_mode,
-            reason="memory_schema_missing",
+            reason=MEMORY_STATUS_SCHEMA_MISSING,
             db_path=str(db_path),
         )
 
@@ -93,7 +101,7 @@ def get_memory_runtime_status(
         requested=True,
         enabled=True,
         strict_mode=memory_strict_mode,
-        reason="memory_enabled",
+        reason=MEMORY_STATUS_ENABLED,
         db_path=str(db_path),
     )
 
@@ -144,7 +152,7 @@ def load_memory_context(*, user_id: int, subject_id: int) -> MemoryContext:
 
     except sqlite3.Error as e:
         structured_log(
-            "memory_context_error",
+            MEMORY_CONTEXT_ERROR_EVENT,
             user_id=user_id,
             subject_id=subject_id,
             error=str(e),
@@ -154,7 +162,7 @@ def load_memory_context(*, user_id: int, subject_id: int) -> MemoryContext:
         rendered = _render_memory_context(context_parts)
         latency_ms = int((time.time() - start_time) * 1000)
         structured_log(
-            "memory_context_loaded",
+            MEMORY_CONTEXT_LOADED_EVENT,
             user_id=user_id,
             subject_id=subject_id,
             has_summary=result_counts["has_summary"],
