@@ -22,6 +22,7 @@ from app.structured_log import structured_log
 from memory.db import init_db
 from memory.jobs.utils import _apply_evaluation
 from memory.jobs.utils import _claim_next_pending_job
+from memory.jobs.utils import _reclaim_stale_running_jobs
 from memory.jobs.utils import _load_current_state
 from memory.jobs.utils import _parse_payload
 from memory.jobs.utils import _set_job_done
@@ -106,6 +107,9 @@ def process_pending_jobs(
     failed = 0
 
     try:
+        # Recover updates orphaned by a dead worker before claiming fresh work.
+        _reclaim_stale_running_jobs()
+
         for _ in range(max(1, batch_size)):
             job = _claim_next_pending_job()
             if job is None:

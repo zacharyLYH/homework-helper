@@ -24,6 +24,7 @@ from memory.config import (
     MEMORY_LLM_MAX_CONCEPTS,
     MEMORY_LLM_MAX_OBSERVATIONS,
     MEMORY_LLM_MAX_SUMMARY_CHARS,
+    MEMORY_STALE_JOB_SECONDS,
     MEMORY_WEAK_CONCEPTS_LIMIT,
     MEMORY_WEAK_MASTERY_THRESHOLD,
 )
@@ -376,6 +377,32 @@ def _apply_evaluation(
         job_id=job_id,
         tables_written=tables_written,
     )
+
+
+def _reclaim_stale_running_jobs() -> int:
+    """Requeue jobs orphaned by a dead worker (crash, SIGKILL mid-eval).
+
+    A 'running' job whose row has not been touched for
+    ``MEMORY_STALE_JOB_SECONDS`` will never finish — its worker is gone, and
+    nothing else would ever transition it out of 'running'. Reset those to
+    'pending' so the update is not silently lost. Rows touched recently are
+    live evaluations in a healthy worker and are left alone.
+    """
+    reclaimed = 0
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            UPDATE memory_update_jobs
+            SET status = 'pending', updated_at = datetime('now')
+            WHERE status = 'running'
+              AND updated_at <= datetime('now', ?)
+            """,
+            (f"-{MEMORY_STALE_JOB_SECONDS} seconds",),
+        )
+        reclaimed = cur.rowcount
+    if reclaimed:
+        log.warning("Memory worker reclaimed stale jobs: count=%s", reclaimed)
+    return reclaimed
 
 
 def _claim_next_pending_job() -> dict[str, Any] | None:

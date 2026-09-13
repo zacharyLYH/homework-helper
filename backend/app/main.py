@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.alignment import _get_encoder
 from app.config import settings
 from app.db import init_db, init_debug_db
 from app.logging import get_logger
@@ -18,6 +19,12 @@ async def lifespan(app: FastAPI):
     log.info("Starting homework-helper backend")
     init_db()
     init_debug_db()
+    # Load the alignment encoder once before serving traffic. Concurrent
+    # first-turn cold-starts of this model crashed the process (see
+    # HuggingFaceEncoder); a warmup here keeps requests off the cold path.
+    # Fail-soft: if it fails, requests fail closed per-message instead.
+    if not _get_encoder().warmup():
+        log.warning("Alignment encoder warmup failed; alignment checks will fail closed until it loads")
     memory_status = get_memory_runtime_status(
         memory_enabled=settings.memory_enabled,
         memory_strict_mode=settings.memory_strict_mode,

@@ -59,17 +59,21 @@ def _token_for(email: str) -> str:
     )
 
 
-def _evaluation() -> MemoryEvaluation:
+def _evaluation(
+    *,
+    observation: str = "Learner confuses the signs in the quadratic formula",
+    updated_summary: str = "Learner needs practice tracking signs in the quadratic formula.",
+) -> MemoryEvaluation:
     from memory.schemas import ConceptStateDelta, ConceptUpsert
 
     return MemoryEvaluation(
         skip=False,
-        observations=["Learner confuses the signs in the quadratic formula"],
+        observations=[observation],
         concept_upserts=[ConceptUpsert("quadratic_formula", "Quadratic Formula", [])],
         concept_edges=[],
         concept_state_deltas=[ConceptStateDelta("quadratic_formula", 0.3, 0.9)],
         trait_updates={"pace": "careful"},
-        updated_summary="Learner needs practice tracking signs in the quadratic formula.",
+        updated_summary=updated_summary,
     )
 
 
@@ -344,3 +348,4 @@ async def test_memory_e2e_invalid_llm_schema_fails_job_without_invalid_rows(
         assert job["status"] == "failed"
         assert "worker_error" in json.loads(job["payload_json"])
         assert conn.execute("SELECT COUNT(*) FROM concepts").fetchone()[0] == 0
+

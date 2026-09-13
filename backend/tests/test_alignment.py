@@ -1,3 +1,5 @@
+import threading
+
 import pytest
 
 import app.alignment as alignment
@@ -73,6 +75,77 @@ def test_alignment_fails_closed_on_encoder_error(monkeypatch):
     assert allowed is False
     assert score == 0.0
     assert reason == "encoder_unavailable"
+
+
+def test_encoder_concurrent_encode_single_load():
+    """Concurrent cold-start encode() calls share one model load, no crash.
+
+    Regression for the backend crash seen when several first chat turns hit
+    `check_alignment` at once (LangGraph runs the sync node in a thread
+    executor, so `encode` races from multiple threads).
+    """
+    enc = alignment.HuggingFaceEncoder(name=settings.embedding_model)
+    n_threads = 8
+    errors: list[Exception] = []
+
+    def run() -> None:
+        try:
+            vecs = enc.encode(["help me with my homework"])
+            assert len(vecs) == 1 and len(vecs[0]) == 384
+        except Exception as e:  # pragma: no cover - only on regression
+            errors.append(e)
+
+    threads = [threading.Thread(target=run) for _ in range(n_threads)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []
+    assert enc.is_loaded()
+
+
+def test_encoder_warmup_idempotent_and_fail_soft(monkeypatch):
+    """warmup() is idempotent, thread-safe, and returns False on failure."""
+    enc = alignment.HuggingFaceEncoder(name=settings.embedding_model)
+
+    assert enc.is_loaded() is False
+    assert enc.warmup() is True
+    assert enc.is_loaded() is True
+    assert enc.warmup() is True  # second call is a no-op
+
+    broken = alignment.HuggingFaceEncoder(name="/nonexistent/model/path")
+    assert broken.warmup() is False
+    assert broken.is_loaded() is False
+
+
+def test_alignment_check_alignment_concurrent_real_model():
+    """Concurrent check_alignment calls against the real model all succeed."""
+    n_threads = 6
+    results: list[tuple[bool, float, str]] = []
+    errors: list[Exception] = []
+
+    def run(i: int) -> None:
+        try:
+            msg = (
+                "help me solve this calculus problem"
+                if i % 2 == 0
+                else "recommend a good movie"
+            )
+            results.append(alignment.check_alignment(msg))
+        except Exception as e:  # pragma: no cover - only on regression
+            errors.append(e)
+
+    threads = [threading.Thread(target=run, args=(i,)) for i in range(n_threads)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []
+    assert len(results) == n_threads
+    assert all(reason == "aligned" for allowed, _, reason in results[::2])
+    assert all(reason == "below_threshold" for allowed, _, reason in results[1::2])
 
 
 # ── graph integration ────────────────────────────────────────────────

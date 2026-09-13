@@ -4,7 +4,9 @@ import pytest
 from memory import db as memory_db
 from memory.jobs.utils import (
     _apply_evaluation,
+    _claim_next_pending_job,
     _parse_payload,
+    _reclaim_stale_running_jobs,
     _set_job_failed,
     _validate_semantic,
     normalize_concept_key,
@@ -185,6 +187,82 @@ def test_set_job_failed_preserves_valid_payload_and_raw_invalid_payload(
     assert invalid is not None
     assert valid["worker_error"] == "failure"
     assert invalid["raw_payload_json"] == "bad"
+
+
+def test_reclaim_stale_running_jobs_resets_only_stale_rows(
+    tmp_path, monkeypatch
+) -> None:
+    db_path = tmp_path / "memory.db"
+    memory_db.init_db(db_path)
+    monkeypatch.setattr("memory.config.DEFAULT_MEMORY_DB_PATH", db_path)
+    with memory_db.get_conn(db_path) as conn:
+        # Stale: claimed long ago, never finished — a dead worker's orphan.
+        conn.execute(
+            """
+            INSERT INTO memory_update_jobs (user_id, subject_id, status, updated_at)
+            VALUES (1, 1, 'running', datetime('now', '-1 hour'))
+            """
+        )
+        # Fresh: a live evaluation in a healthy worker.
+        conn.execute(
+            "INSERT INTO memory_update_jobs (user_id, subject_id, status) VALUES (2, 2, 'running')"
+        )
+
+    reclaimed = _reclaim_stale_running_jobs()
+
+    assert reclaimed == 1
+    with memory_db.get_conn(db_path) as conn:
+        rows = conn.execute(
+            "SELECT status FROM memory_update_jobs ORDER BY id"
+        ).fetchall()
+        assert str(rows[0]["status"]) == "pending"  # stale → requeued
+        assert str(rows[1]["status"]) == "running"  # fresh → untouched
+
+
+def test_reclaim_noop_when_no_stale_jobs(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "memory.db"
+    memory_db.init_db(db_path)
+    monkeypatch.setattr("memory.config.DEFAULT_MEMORY_DB_PATH", db_path)
+    with memory_db.get_conn(db_path) as conn:
+        conn.execute(
+            "INSERT INTO memory_update_jobs (user_id, subject_id, status) VALUES (1, 1, 'running')"
+        )
+        conn.execute(
+            "INSERT INTO memory_update_jobs (user_id, subject_id, status) VALUES (1, 1, 'pending')"
+        )
+
+    assert _reclaim_stale_running_jobs() == 0
+
+
+def test_claim_next_pending_job_orders_and_transitions(
+    tmp_path, monkeypatch
+) -> None:
+    db_path = tmp_path / "memory.db"
+    memory_db.init_db(db_path)
+    monkeypatch.setattr("memory.config.DEFAULT_MEMORY_DB_PATH", db_path)
+    with memory_db.get_conn(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO memory_update_jobs (user_id, subject_id, status, created_at)
+            VALUES (1, 1, 'pending', datetime('now', '-2 seconds'))
+            """
+        )
+        conn.execute(
+            "INSERT INTO memory_update_jobs (user_id, subject_id, status) VALUES (1, 1, 'pending')"
+        )
+
+    claimed = _claim_next_pending_job()
+
+    assert claimed is not None
+    claimed_id = int(claimed["id"])
+    with memory_db.get_conn(db_path) as conn:
+        rows = conn.execute(
+            "SELECT id, status FROM memory_update_jobs ORDER BY id"
+        ).fetchall()
+        first_id = int(rows[0]["id"])
+        assert claimed_id == first_id  # oldest first (created_at, id)
+        assert str(rows[0]["status"]) == "running"
+        assert str(rows[1]["status"]) == "pending"
 
 
 def test_set_job_failed_handles_missing_payload(tmp_path, monkeypatch) -> None:

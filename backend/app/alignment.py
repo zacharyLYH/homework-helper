@@ -1,4 +1,5 @@
 import math
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -131,19 +132,47 @@ class HuggingFaceEncoder:
     Rust edition2024), and its `encoders` package imports litellm at import
     time. This wrapper produces identical embeddings (mean-pooled, L2
     normalized) for the same model.
+
+    Thread safety: LangGraph runs the sync `alignment_check` node in a thread
+    executor, so concurrent first chat turns can reach `encode()` from several
+    threads at once. `SentenceTransformer` construction and inference are not
+    thread-safe (concurrent cold-starts crashed the process on MPS), so load
+    and encode are serialized behind a lock. The cost is bounded by a warmup
+    at app startup (`warmup()`), so requests never queue behind a cold load.
     """
 
     def __init__(self, name: str = "sentence-transformers/all-MiniLM-L6-v2"):
         self.name = _resolve_model_path(name)
         self._model: Any | None = None
+        self._lock = threading.Lock()
+
+    def is_loaded(self) -> bool:
+        return self._model is not None
+
+    def warmup(self) -> bool:
+        """Load the model once (idempotent, thread-safe).
+
+        Returns True when the model is ready, False when loading failed
+        (e.g. missing model files); callers may log and continue —
+        `check_alignment` fails closed per-request either way.
+        """
+        if self.is_loaded():
+            return True
+        try:
+            self.encode(["warmup"])
+            return True
+        except Exception as e:
+            log.error("Embedding model warmup failed: %s", e, exc_info=True)
+            return False
 
     def encode(self, texts: list[str]) -> list[list[float]]:
-        if self._model is None:
-            from sentence_transformers import SentenceTransformer
+        with self._lock:
+            if self._model is None:
+                from sentence_transformers import SentenceTransformer
 
-            log.info("Loading embedding model: %s", self.name)
-            self._model = SentenceTransformer(self.name)
-        vectors = self._model.encode(texts, normalize_embeddings=True)
+                log.info("Loading embedding model: %s", self.name)
+                self._model = SentenceTransformer(self.name)
+            vectors = self._model.encode(texts, normalize_embeddings=True)
         return vectors.tolist()
 
 

@@ -26,6 +26,14 @@ so they are shown as ranges.
 """
 
 from dataclasses import dataclass
+import os
+
+
+# Optional test seam: when set, every provider resolves to this base URL so the
+# e2e harness can point the real LLM clients (chat streaming, title generation,
+# memory-worker evaluation) at a local mock server over genuine HTTP. Unset in
+# normal use, so production behavior is unchanged.
+_PROVIDER_BASE_URL_OVERRIDE = os.getenv("PROVIDER_BASE_URL_OVERRIDE", "").strip()
 
 
 @dataclass(frozen=True)
@@ -132,6 +140,13 @@ MODEL_OPTIONS: list[ModelOption] = [
 ]
 
 PROVIDER_BY_ID: dict[str, Provider] = {p.id: p for p in PROVIDERS}
+
+if _PROVIDER_BASE_URL_OVERRIDE:
+    # Test seam only: redirect every provider at its OpenAI-compatible endpoint.
+    PROVIDERS = [
+        Provider(p.id, p.name, _PROVIDER_BASE_URL_OVERRIDE, p.key_url) for p in PROVIDERS
+    ]
+    PROVIDER_BY_ID = {p.id: p for p in PROVIDERS}
 
 def get_provider(provider_id: str) -> Provider | None:
     return PROVIDER_BY_ID.get(provider_id)

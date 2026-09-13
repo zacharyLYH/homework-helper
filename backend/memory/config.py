@@ -36,6 +36,11 @@ MEMORY_LLM_MAX_SUMMARY_CHARS: int = int(
     os.getenv("MEMORY_LLM_MAX_SUMMARY_CHARS", "500")
 )
 
+# A 'running' job untouched for longer than this was orphaned by a dead worker
+# (crash, SIGKILL): the worker reclaims and reprocesses it. Must stay well
+# above MEMORY_LLM_TIMEOUT_SECONDS so live evaluations are never stolen.
+MEMORY_STALE_JOB_SECONDS: int = int(os.getenv("MEMORY_STALE_JOB_SECONDS", "300"))
+
 
 def resolve_memory_db_path() -> Path:
     configured_path = os.getenv("MEMORY_DATABASE_PATH", "").strip()

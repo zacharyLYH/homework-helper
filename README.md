@@ -104,6 +104,7 @@ All settings live in `backend/.env` (created by `setup.sh`, never overwritten).
 | `MEMORY_DATABASE_PATH` | no | `data/memory.db` | Memory SQLite file |
 | `STRUCTURED_LOGGING_PCT` | no | — | % of requests persisted as a full structured trace |
 | `HOMEWORK_ALIGNMENT_THRESHOLD` | no | `0.4` | Min cosine similarity for the alignment gate |
+| `PROVIDER_BASE_URL_OVERRIDE` | no | — | Test-only: redirect every LLM provider at an OpenAI-compatible endpoint (used by the e2e harness) |
 
 ### SMTP (send verification codes)
 
